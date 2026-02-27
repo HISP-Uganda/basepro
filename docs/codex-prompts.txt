@@ -1,0 +1,71 @@
+# Codex Milestone Prompts (Skeleton App)
+# NOTE: keep a copy in docs/prompts/ during work, but do NOT commit prompts.
+
+## Milestone 1 — Repo Bootstrap + Baseline Build
+- Create monorepo structure: backend/ (Gin API), desktop/ (Wails), optional web/ placeholder.
+- Add docs/requirements.md (authoritative), docs/status.md (tracker), and AGENTS.md (contract).
+- Add root Makefile with targets: backend-run/test, migrate-up/down, desktop-dev/test.
+- Add docker compose for postgres (dev).
+- Verify: backend builds/tests, desktop builds and shows placeholder.
+- Add route test harness placeholder in desktop.
+STOP: update docs/status.md, then propose a commit message.
+
+## Milestone 2 — Backend Foundation (Config + SQLX + Migrations)
+- Implement viper config file loading + env + flags.
+- Add config hot reload using WatchConfig, with atomic.Value for reads.
+- Add SQLX pool + ping.
+- Add golang-migrate integration using up/down SQL files.
+- Add initial migrations (users, roles, permissions, api_tokens, refresh_tokens, audit_logs, etc.).
+- Add /api/v1/health and /api/v1/version.
+- Add graceful shutdown using signal.NotifyContext.
+STOP: all tests pass; update docs/status.md; propose commit message.
+
+## Milestone 3 — Backend Auth (JWT + Refresh Rotation + Typed Errors)
+- Implement /auth/login, /auth/refresh (rotation + reuse detection), /auth/logout, /auth/me.
+- Standard error response + codes.
+- Audit events for auth actions.
+- Unit tests for refresh rotation and reuse detection.
+STOP: tests pass; update docs/status.md; propose commit message.
+
+## Milestone 4 — Backend API Token Auth (Machine Auth)
+- Add API token auth middleware (X-API-Token and/or Bearer).
+- Store hashed tokens; admin endpoints to create/revoke/list tokens.
+- Permission-scoped tokens (MVP enforcement).
+- Tests + audit logging.
+STOP: tests pass; update docs/status.md; propose commit message.
+
+## Milestone 5 — RBAC: Roles + Permissions + Scoping
+- Implement RBAC middleware + helpers RequirePermission(...).
+- Apply to users + audit endpoints.
+- Tests for enforcement.
+STOP: tests pass; update docs/status.md; propose commit message.
+
+## Milestone 6 — Desktop: Setup Screen (API Base URL + Test Connection) + Route Tests
+- Implement local config persistence for API base URL + auth mode.
+- /setup route gating /login.
+- “Test Connection” calls /health.
+- Add NotFound component and route tests (no TanStack warnings).
+STOP: tests pass (including route tests); update docs/status.md; propose commit message.
+
+## Milestone 7 — Desktop: Login + Refresh + Session Expiry UX
+- Implement login UI per requirements.
+- HTTP client wrapper attaches access token.
+- Refresh on expiry; invalid/reused refresh => logout + “Session expired...” message.
+- /dashboard placeholder inside authenticated shell.
+STOP: tests pass; update docs/status.md; propose commit message.
+
+## Milestone 8 — Desktop: Sleek MUI Shell + Themes + Admin Palette
+- Drawer + AppBar + footer shell.
+- light/dark/system theme; accent presets picker persisted locally.
+STOP: tests pass; update docs/status.md; propose commit message.
+
+## Milestone 9 — DataGrid Foundation (Advanced Features)
+- Add shared DataGrid wrapper: server pagination/sort/filter, column persistence, export.
+- Use it on /users and /audit scaffolds.
+STOP: tests pass; update docs/status.md; propose commit message.
+
+## Milestone 10 — User Management + Audit Viewer
+- Backend users CRUD (admin-only), audit listing (pagination/filters).
+- Desktop /users and /audit pages using DataGrid wrapper.
+- Permission-protected navigation.
+STOP: tests pass; update docs/status.md; propose commit message.

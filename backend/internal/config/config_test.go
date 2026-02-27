@@ -1,0 +1,90 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestHotReloadAtomicSwapAndValidation(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	initial := []byte(`
+server:
+  port: ":8080"
+  shutdown_timeout_seconds: 10
+database:
+  dsn: "postgres://basepro:basepro@127.0.0.1:5432/basepro_dev?sslmode=disable"
+  max_open_conns: 10
+  max_idle_conns: 5
+  auto_migrate: false
+`)
+	if err := SafeWriteFile(cfgPath, initial, 0o600); err != nil {
+		t.Fatalf("write initial config: %v", err)
+	}
+
+	_, err := Load(Options{ConfigFile: cfgPath, Watch: true})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if got := Get().Server.Port; got != ":8080" {
+		t.Fatalf("expected initial port :8080, got %q", got)
+	}
+
+	updated := []byte(`
+server:
+  port: ":9090"
+  shutdown_timeout_seconds: 10
+database:
+  dsn: "postgres://basepro:basepro@127.0.0.1:5432/basepro_dev?sslmode=disable"
+  max_open_conns: 10
+  max_idle_conns: 5
+  auto_migrate: false
+`)
+	if err := os.WriteFile(cfgPath, updated, 0o600); err != nil {
+		t.Fatalf("write updated config: %v", err)
+	}
+
+	if !waitForConfig(t, func(cfg Config) bool { return cfg.Server.Port == ":9090" }) {
+		t.Fatalf("expected config port to swap to :9090, got %q", Get().Server.Port)
+	}
+
+	invalid := []byte(`
+server:
+  port: ""
+  shutdown_timeout_seconds: 0
+database:
+  dsn: ""
+  max_open_conns: 0
+  max_idle_conns: 0
+`)
+	if err := os.WriteFile(cfgPath, invalid, 0o600); err != nil {
+		t.Fatalf("write invalid config: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+	if got := Get().Server.Port; got != ":9090" {
+		t.Fatalf("invalid reload should keep previous config, got %q", got)
+	}
+}
+
+func waitForConfig(t *testing.T, check func(Config) bool) bool {
+	t.Helper()
+	timeout := time.After(3 * time.Second)
+	tick := time.NewTicker(25 * time.Millisecond)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			return false
+		case <-tick.C:
+			if check(Get()) {
+				return true
+			}
+		}
+	}
+}

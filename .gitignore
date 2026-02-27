@@ -1,0 +1,18 @@
+# Prompt traceability (do not commit)
+docs/prompts/
+
+# Backend
+backend/.env
+backend/bin/
+backend/dist/
+backend/coverage.out
+
+# Desktop
+desktop/frontend/node_modules/
+desktop/bin/
+desktop/build/
+desktop/dist/
+
+# General
+.DS_Store
+*.log
