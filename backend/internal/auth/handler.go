@@ -2,6 +2,8 @@ package auth
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"basepro/backend/internal/apperror"
 	"github.com/gin-gonic/gin"
@@ -26,6 +28,13 @@ type refreshRequest struct {
 
 type logoutRequest struct {
 	RefreshToken string `json:"refreshToken"`
+}
+
+type createAPITokenRequest struct {
+	Name             string   `json:"name"`
+	ExpiresInSeconds *int64   `json:"expiresInSeconds"`
+	Permissions      []string `json:"permissions"`
+	ModuleScope      *string  `json:"moduleScope"`
 }
 
 func (h *Handler) Login(c *gin.Context) {
@@ -73,15 +82,105 @@ func (h *Handler) Logout(c *gin.Context) {
 }
 
 func (h *Handler) Me(c *gin.Context) {
-	value, ok := c.Get(ClaimsContextKey)
+	claims, ok := claimsFromContext(c)
 	if !ok {
 		apperror.Write(c, apperror.Unauthorized("Missing authorization token"))
 		return
 	}
-	claims, ok := value.(Claims)
+	c.JSON(http.StatusOK, h.service.Me(claims))
+}
+
+func (h *Handler) ListAPITokens(c *gin.Context) {
+	claims, ok := claimsFromContext(c)
 	if !ok {
-		apperror.Write(c, apperror.Unauthorized("Invalid access token"))
+		apperror.Write(c, apperror.Unauthorized("Missing authorization token"))
 		return
 	}
-	c.JSON(http.StatusOK, h.service.Me(claims))
+
+	tokens, err := h.service.ListAPITokens(c.Request.Context(), claims)
+	if err != nil {
+		apperror.Write(c, err)
+		return
+	}
+
+	masked := make([]gin.H, 0, len(tokens))
+	for _, token := range tokens {
+		masked = append(masked, gin.H{
+			"id":         token.ID,
+			"name":       token.Name,
+			"prefix":     token.Prefix,
+			"revokedAt":  token.RevokedAt,
+			"expiresAt":  token.ExpiresAt,
+			"lastUsedAt": token.LastUsedAt,
+			"createdAt":  token.CreatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"items": masked})
+}
+
+func (h *Handler) CreateAPIToken(c *gin.Context) {
+	claims, ok := claimsFromContext(c)
+	if !ok {
+		apperror.Write(c, apperror.Unauthorized("Missing authorization token"))
+		return
+	}
+
+	var req createAPITokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		apperror.Write(c, apperror.Unauthorized("Token name is required"))
+		return
+	}
+
+	result, err := h.service.CreateAPIToken(c.Request.Context(), claims, APITokenCreateInput{
+		Name:             req.Name,
+		ExpiresInSeconds: req.ExpiresInSeconds,
+		Permissions:      req.Permissions,
+		ModuleScope:      req.ModuleScope,
+	}, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		apperror.Write(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, result)
+}
+
+func (h *Handler) RevokeAPIToken(c *gin.Context) {
+	claims, ok := claimsFromContext(c)
+	if !ok {
+		apperror.Write(c, apperror.Unauthorized("Missing authorization token"))
+		return
+	}
+
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		apperror.Write(c, apperror.Unauthorized("Token not found"))
+		return
+	}
+
+	token, err := h.service.RevokeAPIToken(c.Request.Context(), claims, id, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		apperror.Write(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":         token.ID,
+		"name":       token.Name,
+		"prefix":     token.Prefix,
+		"revokedAt":  token.RevokedAt,
+		"expiresAt":  token.ExpiresAt,
+		"lastUsedAt": token.LastUsedAt,
+		"createdAt":  token.CreatedAt,
+	})
+}
+
+func claimsFromContext(c *gin.Context) (Claims, bool) {
+	value, ok := c.Get(ClaimsContextKey)
+	if !ok {
+		return Claims{}, false
+	}
+	claims, ok := value.(Claims)
+	return claims, ok
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -19,6 +20,16 @@ type Repository interface {
 	CreateRefreshToken(ctx context.Context, token RefreshToken) (*RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenID int64, replacedByTokenID *int64, now time.Time) error
 	RevokeAllActiveRefreshTokensForUser(ctx context.Context, userID int64, now time.Time) error
+
+	CreateAPIToken(ctx context.Context, token APIToken, permissions []string, moduleScope *string) (*APIToken, error)
+	ListAPITokens(ctx context.Context) ([]APIToken, error)
+	GetAPITokenByID(ctx context.Context, tokenID int64) (*APIToken, error)
+	GetAPITokenByHash(ctx context.Context, hash string) (*APIToken, error)
+	GetAPITokenPermissions(ctx context.Context, tokenID int64) ([]string, error)
+	RevokeAPIToken(ctx context.Context, tokenID int64, now time.Time) error
+	UpdateAPITokenLastUsed(ctx context.Context, tokenID int64, now time.Time) error
+
+	EnsureUser(ctx context.Context, username, passwordHash string, isActive bool) (*User, error)
 }
 
 type SQLRepository struct {
@@ -114,4 +125,142 @@ func (r *SQLRepository) RevokeAllActiveRefreshTokensForUser(ctx context.Context,
 		return fmt.Errorf("revoke active refresh tokens: %w", err)
 	}
 	return nil
+}
+
+func (r *SQLRepository) CreateAPIToken(ctx context.Context, token APIToken, permissions []string, moduleScope *string) (*APIToken, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin create api token transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var created APIToken
+	err = tx.GetContext(ctx, &created, `
+		INSERT INTO api_tokens (name, token_hash, prefix, created_by_user_id, expires_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, name, token_hash, prefix, created_by_user_id, revoked_at, expires_at, last_used_at, created_at, updated_at
+	`, token.Name, token.TokenHash, token.Prefix, token.CreatedByUserID, token.ExpiresAt, token.CreatedAt, token.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("insert api token: %w", err)
+	}
+
+	for _, perm := range permissions {
+		clean := strings.TrimSpace(perm)
+		if clean == "" {
+			continue
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO api_token_permissions (api_token_id, permission, module_scope, created_at)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT DO NOTHING
+		`, created.ID, clean, moduleScope, token.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("insert api token permission: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit create api token transaction: %w", err)
+	}
+
+	return &created, nil
+}
+
+func (r *SQLRepository) ListAPITokens(ctx context.Context) ([]APIToken, error) {
+	var tokens []APIToken
+	if err := r.db.SelectContext(ctx, &tokens, `
+		SELECT id, name, token_hash, prefix, created_by_user_id, revoked_at, expires_at, last_used_at, created_at, updated_at
+		FROM api_tokens
+		ORDER BY created_at DESC
+	`); err != nil {
+		return nil, fmt.Errorf("list api tokens: %w", err)
+	}
+	return tokens, nil
+}
+
+func (r *SQLRepository) GetAPITokenByID(ctx context.Context, tokenID int64) (*APIToken, error) {
+	var token APIToken
+	if err := r.db.GetContext(ctx, &token, `
+		SELECT id, name, token_hash, prefix, created_by_user_id, revoked_at, expires_at, last_used_at, created_at, updated_at
+		FROM api_tokens
+		WHERE id = $1
+	`, tokenID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get api token by id: %w", err)
+	}
+	return &token, nil
+}
+
+func (r *SQLRepository) GetAPITokenByHash(ctx context.Context, hash string) (*APIToken, error) {
+	var token APIToken
+	if err := r.db.GetContext(ctx, &token, `
+		SELECT id, name, token_hash, prefix, created_by_user_id, revoked_at, expires_at, last_used_at, created_at, updated_at
+		FROM api_tokens
+		WHERE token_hash = $1
+	`, hash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get api token by hash: %w", err)
+	}
+	return &token, nil
+}
+
+func (r *SQLRepository) GetAPITokenPermissions(ctx context.Context, tokenID int64) ([]string, error) {
+	var permissions []string
+	if err := r.db.SelectContext(ctx, &permissions, `
+		SELECT permission FROM api_token_permissions WHERE api_token_id = $1
+	`, tokenID); err != nil {
+		return nil, fmt.Errorf("get api token permissions: %w", err)
+	}
+	return permissions, nil
+}
+
+func (r *SQLRepository) RevokeAPIToken(ctx context.Context, tokenID int64, now time.Time) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE api_tokens
+		SET revoked_at = COALESCE(revoked_at, $2), updated_at = $2
+		WHERE id = $1
+	`, tokenID, now)
+	if err != nil {
+		return fmt.Errorf("revoke api token: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *SQLRepository) UpdateAPITokenLastUsed(ctx context.Context, tokenID int64, now time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE api_tokens
+		SET last_used_at = $2, updated_at = $2
+		WHERE id = $1
+	`, tokenID, now)
+	if err != nil {
+		return fmt.Errorf("update api token last used: %w", err)
+	}
+	return nil
+}
+
+func (r *SQLRepository) EnsureUser(ctx context.Context, username, passwordHash string, isActive bool) (*User, error) {
+	if user, err := r.GetUserByUsername(ctx, username); err == nil {
+		return user, nil
+	}
+
+	var created User
+	err := r.db.GetContext(ctx, &created, `
+		INSERT INTO users (username, password_hash, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, NOW(), NOW())
+		RETURNING id, username, password_hash, is_active
+	`, username, passwordHash, isActive)
+	if err != nil {
+		return nil, fmt.Errorf("ensure user: %w", err)
+	}
+	return &created, nil
 }

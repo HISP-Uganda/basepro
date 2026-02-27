@@ -30,6 +30,10 @@ type Config struct {
 		RefreshTokenTTLSeconds int    `mapstructure:"refresh_token_ttl_seconds"`
 		JWTSigningKey          string `mapstructure:"jwt_signing_key"`
 		PasswordHashCost       int    `mapstructure:"password_hash_cost"`
+		APITokenEnabled        bool   `mapstructure:"api_token_enabled"`
+		APITokenHeaderName     string `mapstructure:"api_token_header_name"`
+		APITokenTTLSeconds     int    `mapstructure:"api_token_ttl_seconds"`
+		APITokenAllowBearer    bool   `mapstructure:"api_token_allow_bearer"`
 	} `mapstructure:"auth"`
 }
 
@@ -114,6 +118,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.access_token_ttl_seconds", 900)
 	v.SetDefault("auth.refresh_token_ttl_seconds", 604800)
 	v.SetDefault("auth.password_hash_cost", 12)
+	v.SetDefault("auth.api_token_enabled", true)
+	v.SetDefault("auth.api_token_header_name", "X-API-Token")
+	v.SetDefault("auth.api_token_ttl_seconds", 2592000)
+	v.SetDefault("auth.api_token_allow_bearer", false)
 }
 
 func defaultConfig() Config {
@@ -126,6 +134,10 @@ func defaultConfig() Config {
 	cfg.Auth.AccessTokenTTLSeconds = 900
 	cfg.Auth.RefreshTokenTTLSeconds = 604800
 	cfg.Auth.PasswordHashCost = 12
+	cfg.Auth.APITokenEnabled = true
+	cfg.Auth.APITokenHeaderName = "X-API-Token"
+	cfg.Auth.APITokenTTLSeconds = 2592000
+	cfg.Auth.APITokenAllowBearer = false
 	return cfg
 }
 
@@ -167,6 +179,12 @@ func validate(cfg Config) error {
 	}
 	if cfg.Auth.PasswordHashCost < 4 || cfg.Auth.PasswordHashCost > 31 {
 		return errors.New("auth.password_hash_cost must be between 4 and 31")
+	}
+	if cfg.Auth.APITokenHeaderName == "" {
+		return errors.New("auth.api_token_header_name must not be empty")
+	}
+	if cfg.Auth.APITokenTTLSeconds <= 0 {
+		return errors.New("auth.api_token_ttl_seconds must be > 0")
 	}
 	return nil
 }

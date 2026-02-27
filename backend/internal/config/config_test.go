@@ -25,6 +25,10 @@ auth:
   refresh_token_ttl_seconds: 604800
   jwt_signing_key: "test-signing-key"
   password_hash_cost: 12
+  api_token_enabled: true
+  api_token_header_name: "X-API-Token"
+  api_token_ttl_seconds: 2592000
+  api_token_allow_bearer: false
 `)
 	if err := SafeWriteFile(cfgPath, initial, 0o600); err != nil {
 		t.Fatalf("write initial config: %v", err)
@@ -53,6 +57,10 @@ auth:
   refresh_token_ttl_seconds: 604800
   jwt_signing_key: "test-signing-key"
   password_hash_cost: 12
+  api_token_enabled: true
+  api_token_header_name: "X-API-Token"
+  api_token_ttl_seconds: 2592000
+  api_token_allow_bearer: false
 `)
 	if err := os.WriteFile(cfgPath, updated, 0o600); err != nil {
 		t.Fatalf("write updated config: %v", err)
@@ -75,6 +83,10 @@ auth:
   refresh_token_ttl_seconds: 0
   jwt_signing_key: ""
   password_hash_cost: 1
+  api_token_enabled: true
+  api_token_header_name: ""
+  api_token_ttl_seconds: 0
+  api_token_allow_bearer: false
 `)
 	if err := os.WriteFile(cfgPath, invalid, 0o600); err != nil {
 		t.Fatalf("write invalid config: %v", err)

@@ -11,22 +11,38 @@ import (
 )
 
 type Service struct {
-	repo         Repository
-	auditService *audit.Service
-	jwt          *JWTManager
-	accessTTL    time.Duration
-	refreshTTL   time.Duration
-	now          func() time.Time
+	repo             Repository
+	auditService     *audit.Service
+	jwt              *JWTManager
+	accessTTL        time.Duration
+	refreshTTL       time.Duration
+	apiTokenTTL      time.Duration
+	apiTokenSecret   string
+	apiTokenEnabled  bool
+	passwordHashCost int
+	now              func() time.Time
 }
 
-func NewService(repo Repository, auditService *audit.Service, jwt *JWTManager, accessTTL, refreshTTL time.Duration) *Service {
+func NewService(
+	repo Repository,
+	auditService *audit.Service,
+	jwt *JWTManager,
+	accessTTL, refreshTTL, apiTokenTTL time.Duration,
+	apiTokenSecret string,
+	apiTokenEnabled bool,
+	passwordHashCost int,
+) *Service {
 	return &Service{
-		repo:         repo,
-		auditService: auditService,
-		jwt:          jwt,
-		accessTTL:    accessTTL,
-		refreshTTL:   refreshTTL,
-		now:          func() time.Time { return time.Now().UTC() },
+		repo:             repo,
+		auditService:     auditService,
+		jwt:              jwt,
+		accessTTL:        accessTTL,
+		refreshTTL:       refreshTTL,
+		apiTokenTTL:      apiTokenTTL,
+		apiTokenSecret:   apiTokenSecret,
+		apiTokenEnabled:  apiTokenEnabled,
+		passwordHashCost: passwordHashCost,
+		now:              func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -185,11 +201,168 @@ func (s *Service) Logout(ctx context.Context, refreshToken, authHeader, ip, user
 }
 
 func (s *Service) Me(claims Claims) map[string]any {
+	roles := []string{}
+	if claims.UserID == 1 {
+		roles = []string{"admin"}
+	}
 	return map[string]any{
 		"id":       claims.UserID,
 		"username": claims.Username,
-		"roles":    []string{},
+		"roles":    roles,
 	}
+}
+
+func (s *Service) ListAPITokens(ctx context.Context, actor Claims) ([]APIToken, error) {
+	if !s.isAdmin(actor) {
+		return nil, apperror.Unauthorized("Admin access required")
+	}
+	return s.repo.ListAPITokens(ctx)
+}
+
+func (s *Service) CreateAPIToken(ctx context.Context, actor Claims, input APITokenCreateInput, ip, userAgent string) (APITokenCreateResult, error) {
+	if !s.isAdmin(actor) {
+		return APITokenCreateResult{}, apperror.Unauthorized("Admin access required")
+	}
+	if !s.apiTokenEnabled {
+		return APITokenCreateResult{}, apperror.Unauthorized("API token auth is disabled")
+	}
+	if strings.TrimSpace(input.Name) == "" {
+		return APITokenCreateResult{}, apperror.Unauthorized("Token name is required")
+	}
+
+	now := s.now()
+	plaintext, err := GenerateAPIToken()
+	if err != nil {
+		return APITokenCreateResult{}, err
+	}
+
+	var expiresAt *time.Time
+	ttl := s.apiTokenTTL
+	if input.ExpiresInSeconds != nil && *input.ExpiresInSeconds > 0 {
+		ttl = time.Duration(*input.ExpiresInSeconds) * time.Second
+	}
+	if ttl > 0 {
+		t := now.Add(ttl)
+		expiresAt = &t
+	}
+
+	created, err := s.repo.CreateAPIToken(ctx, APIToken{
+		Name:            strings.TrimSpace(input.Name),
+		TokenHash:       HashAPIToken(s.apiTokenSecret, plaintext),
+		Prefix:          APITokenPrefix(plaintext),
+		CreatedByUserID: &actor.UserID,
+		ExpiresAt:       expiresAt,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}, input.Permissions, input.ModuleScope)
+	if err != nil {
+		return APITokenCreateResult{}, err
+	}
+
+	s.logAudit(ctx, audit.Event{
+		Action:      "api_token.create",
+		ActorUserID: &actor.UserID,
+		EntityType:  "api_token",
+		EntityID:    strPtr(created.Name),
+		Metadata: map[string]any{
+			"token_id":    created.ID,
+			"prefix":      created.Prefix,
+			"permissions": input.Permissions,
+			"ip":          ip,
+			"user_agent":  userAgent,
+		},
+	})
+
+	return APITokenCreateResult{
+		ID:          created.ID,
+		Name:        created.Name,
+		Prefix:      created.Prefix,
+		Token:       plaintext,
+		ExpiresAt:   created.ExpiresAt,
+		Permissions: input.Permissions,
+	}, nil
+}
+
+func (s *Service) RevokeAPIToken(ctx context.Context, actor Claims, tokenID int64, ip, userAgent string) (*APIToken, error) {
+	if !s.isAdmin(actor) {
+		return nil, apperror.Unauthorized("Admin access required")
+	}
+
+	now := s.now()
+	if err := s.repo.RevokeAPIToken(ctx, tokenID, now); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, apperror.Unauthorized("Token not found")
+		}
+		return nil, err
+	}
+	token, err := s.repo.GetAPITokenByID(ctx, tokenID)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logAudit(ctx, audit.Event{
+		Action:      "api_token.revoke",
+		ActorUserID: &actor.UserID,
+		EntityType:  "api_token",
+		EntityID:    strPtr(token.Name),
+		Metadata: map[string]any{
+			"token_id":   token.ID,
+			"prefix":     token.Prefix,
+			"ip":         ip,
+			"user_agent": userAgent,
+		},
+	})
+
+	return token, nil
+}
+
+func (s *Service) AuthenticateAPIToken(ctx context.Context, plaintext, ip, userAgent string) (Principal, error) {
+	if !s.apiTokenEnabled {
+		return Principal{}, ErrNotFound
+	}
+	if plaintext == "" {
+		return Principal{}, ErrNotFound
+	}
+
+	now := s.now()
+	hash := HashAPIToken(s.apiTokenSecret, plaintext)
+	token, err := s.repo.GetAPITokenByHash(ctx, hash)
+	if err != nil {
+		return Principal{}, apperror.Unauthorized("Invalid API token")
+	}
+	if token.RevokedAt != nil {
+		return Principal{}, apperror.Unauthorized("Invalid API token")
+	}
+	if token.ExpiresAt != nil && now.After(*token.ExpiresAt) {
+		return Principal{}, apperror.Unauthorized("Invalid API token")
+	}
+	permissions, err := s.repo.GetAPITokenPermissions(ctx, token.ID)
+	if err != nil {
+		return Principal{}, err
+	}
+
+	go func(tokenID int64, at time.Time) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.repo.UpdateAPITokenLastUsed(ctx, tokenID, at)
+	}(token.ID, now)
+
+	return Principal{
+		Type:        "api_token",
+		APITokenID:  token.ID,
+		Permissions: permissions,
+	}, nil
+}
+
+func (s *Service) SeedDevAdmin(ctx context.Context, username, password string) (*User, error) {
+	if strings.TrimSpace(username) == "" || strings.TrimSpace(password) == "" {
+		return nil, errors.New("seed credentials must not be empty")
+	}
+	hash, err := HashPassword(password, s.passwordHashCost)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.EnsureUser(ctx, username, hash, true)
 }
 
 func (s *Service) issueTokens(ctx context.Context, userID int64, username string) (AuthResponse, error) {
@@ -236,6 +409,10 @@ func (s *Service) logAudit(ctx context.Context, event audit.Event) {
 		return
 	}
 	_ = s.auditService.Log(ctx, event)
+}
+
+func (s *Service) isAdmin(actor Claims) bool {
+	return actor.UserID == 1
 }
 
 func strPtr(value string) *string {

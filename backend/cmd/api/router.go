@@ -12,15 +12,21 @@ import (
 )
 
 type AppDeps struct {
-	DB          *sqlx.DB
-	Version     string
-	AuthHandler *auth.Handler
-	JWTManager  *auth.JWTManager
+	DB                  *sqlx.DB
+	Version             string
+	AuthHandler         *auth.Handler
+	AuthService         *auth.Service
+	JWTManager          *auth.JWTManager
+	APITokenHeaderName  string
+	APITokenAllowBearer bool
 }
 
 func newRouter(deps AppDeps) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	if deps.AuthService != nil {
+		r.Use(middleware.APITokenAuth(deps.AuthService, deps.APITokenHeaderName, deps.APITokenAllowBearer))
+	}
 
 	api := r.Group("/api/v1")
 	api.GET("/health", func(c *gin.Context) {
@@ -53,6 +59,12 @@ func newRouter(deps AppDeps) *gin.Engine {
 		authGroup.POST("/refresh", deps.AuthHandler.Refresh)
 		authGroup.POST("/logout", deps.AuthHandler.Logout)
 		authGroup.GET("/me", middleware.JWTAuth(deps.JWTManager), deps.AuthHandler.Me)
+
+		admin := api.Group("/admin/api-tokens")
+		admin.Use(middleware.JWTAuth(deps.JWTManager), middleware.RequireAdminUser(), middleware.RequirePermission("api_tokens.manage"))
+		admin.GET("", deps.AuthHandler.ListAPITokens)
+		admin.POST("", deps.AuthHandler.CreateAPIToken)
+		admin.POST("/:id/revoke", deps.AuthHandler.RevokeAPIToken)
 	}
 
 	return r

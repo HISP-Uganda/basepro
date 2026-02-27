@@ -188,3 +188,89 @@
 ### Milestone scope guard
 - API-token authentication was not implemented in this milestone.
 - RBAC roles/permission enforcement was not implemented in this milestone.
+
+## Milestone 4 — Backend API Token Auth (Machine/Integration Auth) (Complete)
+
+### What changed
+- Added migration `000010_api_token_management` to extend API-token storage and add token permission linkage without editing prior migrations.
+- `api_tokens` now supports token management fields:
+  - `prefix`
+  - `created_by_user_id`
+  - `revoked_at`
+  - `expires_at` (already present)
+  - `last_used_at`
+  - `created_at` / `updated_at`
+- Added `api_token_permissions` table for permission-scoped tokens (`permission` + optional `module_scope`).
+- Added indexes:
+  - unique `api_tokens(token_hash)`
+  - `api_tokens(revoked_at)`
+  - `api_tokens(prefix)`
+
+### API token hashing approach
+- API tokens are generated as random opaque plaintext strings (returned once at creation).
+- Only a deterministic HMAC-SHA256 hash is stored in DB for lookup:
+  - `stored_hash = HMAC_SHA256(token, auth.jwt_signing_key)`
+- Plaintext token is never persisted and cannot be re-read from the API after create.
+
+### Config additions
+- Added config keys under `auth`:
+  - `api_token_enabled` (bool)
+  - `api_token_header_name` (default `X-API-Token`)
+  - `api_token_ttl_seconds` (default TTL)
+  - `api_token_allow_bearer` (allow Bearer token for API-token auth)
+- Existing config validation now enforces non-empty token header name and positive token TTL.
+
+### Middleware and principal model
+- Added API-token middleware that accepts:
+  - `X-API-Token: <token>`
+  - optional `Authorization: Bearer <token>` when enabled
+- Validation behavior:
+  - token hash lookup
+  - reject revoked tokens
+  - reject expired tokens
+  - update `last_used_at` best-effort
+- Context principal now supports:
+  - `type = user` (JWT)
+  - `type = api_token` (API token)
+  - `permissions` for API-token scoped checks
+- Added `RequirePermission(...)` helper to enforce API token permissions (and keep JWT path ready for Milestone 5).
+
+### Admin API-token endpoints
+- Added JWT-protected admin endpoints under `/api/v1/admin/api-tokens`:
+  - `GET /api/v1/admin/api-tokens`
+  - `POST /api/v1/admin/api-tokens`
+  - `POST /api/v1/admin/api-tokens/:id/revoke`
+- Admin check is intentionally minimal for Milestone 4:
+  - user ID `1` is treated as admin stub.
+- Added audit events:
+  - `api_token.create`
+  - `api_token.revoke`
+
+### Dev-only seed convenience
+- Added startup flag `--seed-dev-admin` to create/ensure an initial dev admin user.
+- Seed credentials can be set via env:
+  - `BASEPRO_DEV_ADMIN_USERNAME`
+  - `BASEPRO_DEV_ADMIN_PASSWORD`
+
+### How to create/revoke API tokens
+- Create token:
+  - `curl -s -X POST http://127.0.0.1:8080/api/v1/admin/api-tokens -H 'Authorization: Bearer <jwt>' -H 'Content-Type: application/json' -d '{"name":"ci-token","permissions":["audit.read"],"expiresInSeconds":3600}'`
+- List tokens (masked):
+  - `curl -s http://127.0.0.1:8080/api/v1/admin/api-tokens -H 'Authorization: Bearer <jwt>'`
+- Revoke token:
+  - `curl -s -X POST http://127.0.0.1:8080/api/v1/admin/api-tokens/<id>/revoke -H 'Authorization: Bearer <jwt>'`
+
+### How to test
+- Backend tests: `make backend-test`
+- Frontend route/smoke tests: `make desktop-test`
+
+### Verification summary
+- `go test ./...` in `backend/`: PASS
+- API-token create endpoint test (plaintext once + hashed storage + prefix + permissions): PASS
+- API-token middleware tests (valid/revoked/expired): PASS
+- Audit tests for create/revoke actions: PASS
+- Frontend route tests: PASS
+
+### Milestone scope guard
+- RBAC user role/permission enforcement was not implemented (reserved for Milestone 5).
+- Desktop login/auth UI work was not started (reserved for Milestones 6/7).

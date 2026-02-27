@@ -68,15 +68,38 @@ func run() error {
 		jwtManager,
 		time.Duration(cfg.Auth.AccessTokenTTLSeconds)*time.Second,
 		time.Duration(cfg.Auth.RefreshTokenTTLSeconds)*time.Second,
+		time.Duration(cfg.Auth.APITokenTTLSeconds)*time.Second,
+		cfg.Auth.JWTSigningKey,
+		cfg.Auth.APITokenEnabled,
+		cfg.Auth.PasswordHashCost,
 	)
+
+	if flags.seedDevAdmin {
+		username := os.Getenv("BASEPRO_DEV_ADMIN_USERNAME")
+		if username == "" {
+			username = "admin"
+		}
+		password := os.Getenv("BASEPRO_DEV_ADMIN_PASSWORD")
+		if password == "" {
+			password = "admin123!"
+		}
+		user, seedErr := authService.SeedDevAdmin(ctx, username, password)
+		if seedErr != nil {
+			return fmt.Errorf("seed dev admin: %w", seedErr)
+		}
+		log.Printf("dev admin available: username=%s id=%d", user.Username, user.ID)
+	}
 
 	srv := &http.Server{
 		Addr: cfg.Server.Port,
 		Handler: newRouter(AppDeps{
-			DB:          database,
-			Version:     version,
-			AuthHandler: auth.NewHandler(authService),
-			JWTManager:  jwtManager,
+			DB:                  database,
+			Version:             version,
+			AuthHandler:         auth.NewHandler(authService),
+			AuthService:         authService,
+			JWTManager:          jwtManager,
+			APITokenHeaderName:  cfg.Auth.APITokenHeaderName,
+			APITokenAllowBearer: cfg.Auth.APITokenAllowBearer,
 		}),
 	}
 
@@ -97,6 +120,11 @@ type cliFlags struct {
 	authRefreshTTL   int
 	authSigningKey   string
 	passwordHashCost int
+	apiTokenEnabled  bool
+	apiTokenHeader   string
+	apiTokenTTL      int
+	apiTokenBearer   bool
+	seedDevAdmin     bool
 }
 
 func newFlags() *cliFlags {
@@ -112,6 +140,11 @@ func newFlags() *cliFlags {
 	f.fs.IntVar(&f.authRefreshTTL, "auth-refresh-ttl", 0, "refresh token TTL in seconds")
 	f.fs.StringVar(&f.authSigningKey, "auth-jwt-signing-key", "", "JWT signing key")
 	f.fs.IntVar(&f.passwordHashCost, "auth-password-hash-cost", 0, "bcrypt password hash cost")
+	f.fs.BoolVar(&f.apiTokenEnabled, "auth-api-token-enabled", false, "enable API token auth")
+	f.fs.StringVar(&f.apiTokenHeader, "auth-api-token-header", "", "API token header name")
+	f.fs.IntVar(&f.apiTokenTTL, "auth-api-token-ttl", 0, "default API token TTL in seconds")
+	f.fs.BoolVar(&f.apiTokenBearer, "auth-api-token-allow-bearer", false, "allow Authorization bearer for API token")
+	f.fs.BoolVar(&f.seedDevAdmin, "seed-dev-admin", false, "seed a dev admin user")
 	return f
 }
 
@@ -139,6 +172,14 @@ func (f *cliFlags) overrides() map[string]any {
 			overrides["auth.jwt_signing_key"] = f.authSigningKey
 		case "auth-password-hash-cost":
 			overrides["auth.password_hash_cost"] = f.passwordHashCost
+		case "auth-api-token-enabled":
+			overrides["auth.api_token_enabled"] = f.apiTokenEnabled
+		case "auth-api-token-header":
+			overrides["auth.api_token_header_name"] = f.apiTokenHeader
+		case "auth-api-token-ttl":
+			overrides["auth.api_token_ttl_seconds"] = f.apiTokenTTL
+		case "auth-api-token-allow-bearer":
+			overrides["auth.api_token_allow_bearer"] = f.apiTokenBearer
 		}
 	})
 	return overrides

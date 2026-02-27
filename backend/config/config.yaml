@@ -13,3 +13,7 @@ auth:
   refresh_token_ttl_seconds: 604800
   jwt_signing_key: "dev-insecure-signing-key"
   password_hash_cost: 12
+  api_token_enabled: true
+  api_token_header_name: "X-API-Token"
+  api_token_ttl_seconds: 2592000
+  api_token_allow_bearer: false
