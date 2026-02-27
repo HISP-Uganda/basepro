@@ -25,6 +25,12 @@ type Config struct {
 		MaxIdleConns int    `mapstructure:"max_idle_conns"`
 		AutoMigrate  bool   `mapstructure:"auto_migrate"`
 	} `mapstructure:"database"`
+	Auth struct {
+		AccessTokenTTLSeconds  int    `mapstructure:"access_token_ttl_seconds"`
+		RefreshTokenTTLSeconds int    `mapstructure:"refresh_token_ttl_seconds"`
+		JWTSigningKey          string `mapstructure:"jwt_signing_key"`
+		PasswordHashCost       int    `mapstructure:"password_hash_cost"`
+	} `mapstructure:"auth"`
 }
 
 type Options struct {
@@ -105,6 +111,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.max_open_conns", 10)
 	v.SetDefault("database.max_idle_conns", 5)
 	v.SetDefault("database.auto_migrate", false)
+	v.SetDefault("auth.access_token_ttl_seconds", 900)
+	v.SetDefault("auth.refresh_token_ttl_seconds", 604800)
+	v.SetDefault("auth.password_hash_cost", 12)
 }
 
 func defaultConfig() Config {
@@ -114,6 +123,9 @@ func defaultConfig() Config {
 	cfg.Database.MaxOpenConns = 10
 	cfg.Database.MaxIdleConns = 5
 	cfg.Database.AutoMigrate = false
+	cfg.Auth.AccessTokenTTLSeconds = 900
+	cfg.Auth.RefreshTokenTTLSeconds = 604800
+	cfg.Auth.PasswordHashCost = 12
 	return cfg
 }
 
@@ -143,6 +155,18 @@ func validate(cfg Config) error {
 	}
 	if cfg.Database.MaxIdleConns <= 0 {
 		return errors.New("database.max_idle_conns must be > 0")
+	}
+	if cfg.Auth.AccessTokenTTLSeconds <= 0 {
+		return errors.New("auth.access_token_ttl_seconds must be > 0")
+	}
+	if cfg.Auth.RefreshTokenTTLSeconds <= 0 {
+		return errors.New("auth.refresh_token_ttl_seconds must be > 0")
+	}
+	if cfg.Auth.JWTSigningKey == "" {
+		return errors.New("auth.jwt_signing_key must not be empty")
+	}
+	if cfg.Auth.PasswordHashCost < 4 || cfg.Auth.PasswordHashCost > 31 {
+		return errors.New("auth.password_hash_cost must be between 4 and 31")
 	}
 	return nil
 }

@@ -5,13 +5,17 @@ import (
 	"net/http"
 	"time"
 
+	"basepro/backend/internal/auth"
+	"basepro/backend/internal/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
 
 type AppDeps struct {
-	DB      *sqlx.DB
-	Version string
+	DB          *sqlx.DB
+	Version     string
+	AuthHandler *auth.Handler
+	JWTManager  *auth.JWTManager
 }
 
 func newRouter(deps AppDeps) *gin.Engine {
@@ -42,6 +46,14 @@ func newRouter(deps AppDeps) *gin.Engine {
 	api.GET("/version", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"version": deps.Version})
 	})
+
+	if deps.AuthHandler != nil && deps.JWTManager != nil {
+		authGroup := api.Group("/auth")
+		authGroup.POST("/login", deps.AuthHandler.Login)
+		authGroup.POST("/refresh", deps.AuthHandler.Refresh)
+		authGroup.POST("/logout", deps.AuthHandler.Logout)
+		authGroup.GET("/me", middleware.JWTAuth(deps.JWTManager), deps.AuthHandler.Me)
+	}
 
 	return r
 }

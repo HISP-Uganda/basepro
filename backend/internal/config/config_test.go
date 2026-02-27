@@ -20,6 +20,11 @@ database:
   max_open_conns: 10
   max_idle_conns: 5
   auto_migrate: false
+auth:
+  access_token_ttl_seconds: 900
+  refresh_token_ttl_seconds: 604800
+  jwt_signing_key: "test-signing-key"
+  password_hash_cost: 12
 `)
 	if err := SafeWriteFile(cfgPath, initial, 0o600); err != nil {
 		t.Fatalf("write initial config: %v", err)
@@ -43,6 +48,11 @@ database:
   max_open_conns: 10
   max_idle_conns: 5
   auto_migrate: false
+auth:
+  access_token_ttl_seconds: 900
+  refresh_token_ttl_seconds: 604800
+  jwt_signing_key: "test-signing-key"
+  password_hash_cost: 12
 `)
 	if err := os.WriteFile(cfgPath, updated, 0o600); err != nil {
 		t.Fatalf("write updated config: %v", err)
@@ -60,6 +70,11 @@ database:
   dsn: ""
   max_open_conns: 0
   max_idle_conns: 0
+auth:
+  access_token_ttl_seconds: 0
+  refresh_token_ttl_seconds: 0
+  jwt_signing_key: ""
+  password_hash_cost: 1
 `)
 	if err := os.WriteFile(cfgPath, invalid, 0o600); err != nil {
 		t.Fatalf("write invalid config: %v", err)

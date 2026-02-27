@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"basepro/backend/internal/audit"
+	"basepro/backend/internal/auth"
 	"basepro/backend/internal/config"
 	"basepro/backend/internal/db"
 	"basepro/backend/internal/migrateutil"
@@ -59,9 +61,23 @@ func run() error {
 		}
 	}
 
+	jwtManager := auth.NewJWTManager(cfg.Auth.JWTSigningKey, time.Duration(cfg.Auth.AccessTokenTTLSeconds)*time.Second)
+	authService := auth.NewService(
+		auth.NewSQLRepository(database),
+		audit.NewService(audit.NewSQLRepository(database)),
+		jwtManager,
+		time.Duration(cfg.Auth.AccessTokenTTLSeconds)*time.Second,
+		time.Duration(cfg.Auth.RefreshTokenTTLSeconds)*time.Second,
+	)
+
 	srv := &http.Server{
-		Addr:    cfg.Server.Port,
-		Handler: newRouter(AppDeps{DB: database, Version: version}),
+		Addr: cfg.Server.Port,
+		Handler: newRouter(AppDeps{
+			DB:          database,
+			Version:     version,
+			AuthHandler: auth.NewHandler(authService),
+			JWTManager:  jwtManager,
+		}),
 	}
 
 	shutdownTimeout := time.Duration(cfg.Server.ShutdownTimeoutSeconds) * time.Second
@@ -69,14 +85,18 @@ func run() error {
 }
 
 type cliFlags struct {
-	fs              *flag.FlagSet
-	configFile      string
-	serverPort      string
-	shutdownTimeout int
-	databaseDSN     string
-	maxOpenConns    int
-	maxIdleConns    int
-	autoMigrate     bool
+	fs               *flag.FlagSet
+	configFile       string
+	serverPort       string
+	shutdownTimeout  int
+	databaseDSN      string
+	maxOpenConns     int
+	maxIdleConns     int
+	autoMigrate      bool
+	authAccessTTL    int
+	authRefreshTTL   int
+	authSigningKey   string
+	passwordHashCost int
 }
 
 func newFlags() *cliFlags {
@@ -88,6 +108,10 @@ func newFlags() *cliFlags {
 	f.fs.IntVar(&f.maxOpenConns, "database-max-open-conns", 0, "max open DB connections")
 	f.fs.IntVar(&f.maxIdleConns, "database-max-idle-conns", 0, "max idle DB connections")
 	f.fs.BoolVar(&f.autoMigrate, "database-auto-migrate", false, "auto-run migrations on startup")
+	f.fs.IntVar(&f.authAccessTTL, "auth-access-ttl", 0, "access token TTL in seconds")
+	f.fs.IntVar(&f.authRefreshTTL, "auth-refresh-ttl", 0, "refresh token TTL in seconds")
+	f.fs.StringVar(&f.authSigningKey, "auth-jwt-signing-key", "", "JWT signing key")
+	f.fs.IntVar(&f.passwordHashCost, "auth-password-hash-cost", 0, "bcrypt password hash cost")
 	return f
 }
 
@@ -107,6 +131,14 @@ func (f *cliFlags) overrides() map[string]any {
 			overrides["database.max_idle_conns"] = f.maxIdleConns
 		case "database-auto-migrate":
 			overrides["database.auto_migrate"] = f.autoMigrate
+		case "auth-access-ttl":
+			overrides["auth.access_token_ttl_seconds"] = f.authAccessTTL
+		case "auth-refresh-ttl":
+			overrides["auth.refresh_token_ttl_seconds"] = f.authRefreshTTL
+		case "auth-jwt-signing-key":
+			overrides["auth.jwt_signing_key"] = f.authSigningKey
+		case "auth-password-hash-cost":
+			overrides["auth.password_hash_cost"] = f.passwordHashCost
 		}
 	})
 	return overrides

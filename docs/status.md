@@ -106,3 +106,85 @@
 ### Known follow-ups
 - Auto-migration is available via `database.auto_migrate` config / `--database-auto-migrate`; keep disabled in production.
 - Authentication/RBAC remains intentionally unimplemented for Milestone 2.
+
+## Milestone 3 — Backend Auth (JWT + Refresh Rotation + Typed Errors + Audit) (Complete)
+
+### What changed
+- Added auth-specific migration `000009_auth_token_chain_and_audit_indexes` to extend existing tables without editing prior migrations.
+- `refresh_tokens` now supports rotation/reuse chain tracking fields:
+  - `issued_at`
+  - `replaced_by_token_id`
+  - `updated_at`
+- `audit_logs` now supports `timestamp` for ordered event querying.
+- Added required indexes:
+  - `refresh_tokens(user_id)`
+  - `refresh_tokens(token_hash)` unique index
+  - `audit_logs(timestamp DESC)`
+- Extended backend config with auth settings:
+  - `auth.access_token_ttl_seconds`
+  - `auth.refresh_token_ttl_seconds`
+  - `auth.jwt_signing_key`
+  - `auth.password_hash_cost`
+- Added config validation to fail fast when JWT signing key is empty.
+- Added `internal/apperror` for standardized typed error responses.
+- Added `internal/audit` (SQLX repository + service).
+- Added `internal/auth`:
+  - SQLX repository for users/refresh tokens
+  - password hashing/verify helpers (bcrypt)
+  - JWT manager
+  - auth service implementing login, refresh rotation, refresh reuse detection, logout, and `me`
+  - HTTP handlers for `/api/v1/auth/*`
+- Added `internal/middleware` JWT auth middleware with request context claims injection.
+- Wired auth + audit dependencies in `cmd/api/main.go` via dependency injection (no global DB state).
+- Added backend auth endpoints:
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/refresh`
+  - `POST /api/v1/auth/logout`
+  - `GET /api/v1/auth/me` (JWT protected)
+
+### Typed error shape
+- Handlers now return auth errors in standardized shape:
+  - `{ "error": { "code": "...", "message": "..." } }`
+- Implemented codes:
+  - `AUTH_UNAUTHORIZED`
+  - `AUTH_EXPIRED`
+  - `AUTH_REFRESH_REUSED`
+  - `AUTH_REFRESH_INVALID`
+
+### Refresh rotation and reuse detection
+- Refresh tokens are generated as random opaque strings and only SHA-256 hashes are stored in DB.
+- On refresh success:
+  - old token row is marked `revoked_at`
+  - old token row links `replaced_by_token_id` to the new token row
+  - new access + refresh tokens are issued
+- On refresh reuse (revoked token presented):
+  - response returns `AUTH_REFRESH_REUSED` (401)
+  - active refresh tokens for that user are revoked to contain the token family/session.
+
+### Auth endpoint examples (curl)
+- Login:
+  - `curl -s -X POST http://127.0.0.1:8080/api/v1/auth/login -H 'Content-Type: application/json' -d '{"username":"alice","password":"secret"}'`
+- Refresh:
+  - `curl -s -X POST http://127.0.0.1:8080/api/v1/auth/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"<refresh-token>"}'`
+- Logout with refresh token:
+  - `curl -s -X POST http://127.0.0.1:8080/api/v1/auth/logout -H 'Content-Type: application/json' -d '{"refreshToken":"<refresh-token>"}'`
+- Me with access token:
+  - `curl -s http://127.0.0.1:8080/api/v1/auth/me -H 'Authorization: Bearer <access-token>'`
+
+### How to test
+- Backend tests: `make backend-test`
+- Frontend route/smoke tests: `make desktop-test`
+
+### Verification summary
+- Backend tests (`go test ./...`): PASS
+- Login success test (token issuance + hashed refresh storage): PASS
+- Login failure typed error test: PASS
+- Refresh rotation test (old revoked + new works): PASS
+- Refresh reuse detection + active token revocation test: PASS
+- JWT middleware missing token -> `AUTH_UNAUTHORIZED`: PASS
+- JWT middleware expired token -> `AUTH_EXPIRED`: PASS
+- Frontend route tests: PASS
+
+### Milestone scope guard
+- API-token authentication was not implemented in this milestone.
+- RBAC roles/permission enforcement was not implemented in this milestone.
