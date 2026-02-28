@@ -19,6 +19,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import MenuIcon from '@mui/icons-material/Menu'
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded'
 import SettingsRoundedIcon from '@mui/icons-material/SettingsRounded'
@@ -126,7 +127,14 @@ export function AppShell() {
 
   const drawerContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Toolbar sx={{ justifyContent: navCollapsed ? 'center' : 'space-between', px: 1.5 }}>
+      <Toolbar
+        sx={{
+          justifyContent: navCollapsed ? 'center' : 'space-between',
+          px: 1.5,
+          bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.9 : 0.86),
+          color: 'primary.contrastText',
+        }}
+      >
         {!navCollapsed ? (
           <Typography variant="h6" noWrap>
             BasePro
@@ -183,6 +191,28 @@ export function AppShell() {
           </ListItemButton>
         ))}
       </List>
+      <Box sx={{ mt: 'auto', p: 1.25 }}>
+        <Box
+          sx={{
+            borderRadius: 2,
+            px: navCollapsed ? 0.5 : 1.25,
+            py: 0.75,
+            textAlign: navCollapsed ? 'center' : 'left',
+            bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'light' ? 0.12 : 0.24),
+            color: 'primary.main',
+          }}
+        >
+          {!navCollapsed ? (
+            <Typography variant="caption" fontWeight={700}>
+              BasePro Shell
+            </Typography>
+          ) : (
+            <Typography variant="caption" fontWeight={700}>
+              BP
+            </Typography>
+          )}
+        </Box>
+      </Box>
     </Box>
   )
 
@@ -190,11 +220,14 @@ export function AppShell() {
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar
         position="fixed"
-        color="inherit"
+        color="primary"
         sx={{
           ml: { md: `${drawerWidth}px` },
           width: { md: `calc(100% - ${drawerWidth}px)` },
           backgroundImage: 'none',
+          bgcolor: 'primary.main',
+          color: 'primary.contrastText',
+          borderColor: theme.palette.mode === 'light' ? 'rgba(255,255,255,0.24)' : 'rgba(0,0,0,0.28)',
         }}
       >
         <Toolbar>
