@@ -576,3 +576,61 @@ Verification for this update:
 ### Milestone scope guard
 - AppShell (Drawer/AppBar/Footer) was not implemented in this milestone.
 - Users and Audit pages were not implemented in this milestone.
+
+## Milestone 8 — Sleek MUI Admin Shell + Themes + Palette Presets (Complete)
+
+### What changed
+- Added authenticated `AppShell` layout for `/dashboard` and `/settings` with:
+  - desktop permanent Drawer with mini/collapsed mode
+  - mobile temporary Drawer with hamburger toggle
+  - top AppBar with route-based section title and user avatar/menu
+  - main content outlet container and footer (`BasePro Desktop v0.1.0`)
+- Implemented nav entries:
+  - active routes: `Dashboard`, `Settings`
+  - placeholders: `Users`, `Audit` shown disabled with “Soon” markers (no milestone 9/10 pages implemented)
+- Added authenticated `/settings` page with sections:
+  - Connection: editable API base URL + request timeout + `Test Connection` + save action
+  - Auth mode display (read-only) with explicit redirect path to `/setup` for safe editing
+  - Appearance: theme mode selector + preset quick buttons + full preset picker dialog entry point
+  - About: app/build placeholders
+- Added logout action in user menu:
+  - best-effort `POST /api/v1/auth/logout` when refresh token exists
+  - always clears local session and redirects to `/login`
+
+### Theme + palette system
+- Added persisted UI preferences (`uiPrefs`) in desktop settings model:
+  - `themeMode`: `light | dark | system`
+  - `palettePreset`: preset id
+  - `navCollapsed`: drawer mini/collapse state
+- Added reusable theme/palette modules:
+  - `src/ui/theme.tsx` (`AppThemeProvider`, preference context, system mode handling)
+  - `src/ui/palettePresets.ts` (8 preset definitions)
+  - `src/ui/PalettePresetPicker.tsx` (dialog picker with instant preview)
+- Theme and preset changes apply immediately and persist via settings store.
+
+### UI preference storage location
+- UI preferences are persisted in the existing desktop settings file:
+  - `<os_user_config_dir>/basepro-desktop/settings.json`
+  - JSON section: `uiPrefs`
+- Backend/Wails settings schema extended in `desktop/app.go` with `UIPrefs`/`UIPrefsPatch` and validation/normalization defaults.
+
+### Frontend tests added/updated
+- `desktop/frontend/src/routes.test.tsx` now verifies:
+  - authenticated `/dashboard` renders AppShell + dashboard content
+  - Settings navigation works from shell
+  - theme mode persistence and re-application after reload
+  - palette preset persistence and re-application after reload
+- Added deterministic `matchMedia` mock in `desktop/frontend/src/test-setup.ts`.
+
+### How to test
+- Backend tests: `cd backend && GOCACHE=/tmp/go-build go test ./...`
+- Frontend route/smoke tests: `make desktop-test`
+- Frontend build: `cd desktop/frontend && npm run build`
+
+### Verification summary
+- `cd backend && GOCACHE=/tmp/go-build go test ./...`: PASS
+- `make desktop-test`: PASS (4 tests)
+- `cd desktop/frontend && npm run build`: PASS
+
+### Milestone scope guard
+- Users and Audit pages were not implemented (only disabled placeholders in shell nav).

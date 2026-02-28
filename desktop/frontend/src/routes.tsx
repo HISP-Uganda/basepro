@@ -9,9 +9,11 @@ import {
 } from '@tanstack/react-router'
 import App from './App'
 import { configureSessionStorage, isAuthenticated } from './auth/session'
+import { AppShell } from './components/AppShell'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { SetupPage } from './pages/SetupPage'
 import { settingsStore } from './settings/store'
 import type { SettingsStore } from './settings/types'
@@ -89,7 +91,7 @@ function LoginGatePage() {
   return <LoginPage />
 }
 
-function DashboardGatePage() {
+function AuthenticatedGatePage() {
   const router = useRouter()
   const navigate = useNavigate()
   const [ready, setReady] = React.useState(false)
@@ -123,7 +125,7 @@ function DashboardGatePage() {
     return null
   }
 
-  return <DashboardPage />
+  return <AppShell />
 }
 
 const indexRoute = createRoute({
@@ -144,13 +146,30 @@ const loginRoute = createRoute({
   component: LoginGatePage,
 })
 
-const dashboardRoute = createRoute({
+const authenticatedRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/dashboard',
-  component: DashboardGatePage,
+  id: 'authenticated',
+  component: AuthenticatedGatePage,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute, setupRoute, loginRoute, dashboardRoute])
+const dashboardRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/dashboard',
+  component: DashboardPage,
+})
+
+const settingsRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/settings',
+  component: SettingsPage,
+})
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  setupRoute,
+  loginRoute,
+  authenticatedRoute.addChildren([dashboardRoute, settingsRoute]),
+])
 
 export function createAppRouter(
   initialEntries: string[] = ['/'],

@@ -20,14 +20,28 @@ type Settings struct {
 	APIToken              *string `json:"apiToken,omitempty"`
 	RefreshToken          *string `json:"refreshToken,omitempty"`
 	RequestTimeoutSeconds int     `json:"requestTimeoutSeconds"`
+	UIPrefs               UIPrefs `json:"uiPrefs"`
 }
 
 type SettingsPatch struct {
-	APIBaseURL            *string `json:"apiBaseUrl,omitempty"`
-	AuthMode              *string `json:"authMode,omitempty"`
-	APIToken              *string `json:"apiToken,omitempty"`
-	RefreshToken          *string `json:"refreshToken,omitempty"`
-	RequestTimeoutSeconds *int    `json:"requestTimeoutSeconds,omitempty"`
+	APIBaseURL            *string       `json:"apiBaseUrl,omitempty"`
+	AuthMode              *string       `json:"authMode,omitempty"`
+	APIToken              *string       `json:"apiToken,omitempty"`
+	RefreshToken          *string       `json:"refreshToken,omitempty"`
+	RequestTimeoutSeconds *int          `json:"requestTimeoutSeconds,omitempty"`
+	UIPrefs               *UIPrefsPatch `json:"uiPrefs,omitempty"`
+}
+
+type UIPrefs struct {
+	ThemeMode     string `json:"themeMode"`
+	PalettePreset string `json:"palettePreset"`
+	NavCollapsed  bool   `json:"navCollapsed"`
+}
+
+type UIPrefsPatch struct {
+	ThemeMode     *string `json:"themeMode,omitempty"`
+	PalettePreset *string `json:"palettePreset,omitempty"`
+	NavCollapsed  *bool   `json:"navCollapsed,omitempty"`
 }
 
 // NewApp creates a new App application struct
@@ -77,6 +91,17 @@ func (a *App) SaveSettings(patch SettingsPatch) (Settings, error) {
 	if patch.RequestTimeoutSeconds != nil {
 		next.RequestTimeoutSeconds = *patch.RequestTimeoutSeconds
 	}
+	if patch.UIPrefs != nil {
+		if patch.UIPrefs.ThemeMode != nil {
+			next.UIPrefs.ThemeMode = *patch.UIPrefs.ThemeMode
+		}
+		if patch.UIPrefs.PalettePreset != nil {
+			next.UIPrefs.PalettePreset = strings.TrimSpace(*patch.UIPrefs.PalettePreset)
+		}
+		if patch.UIPrefs.NavCollapsed != nil {
+			next.UIPrefs.NavCollapsed = *patch.UIPrefs.NavCollapsed
+		}
+	}
 
 	next = normalizeSettings(next)
 	if err := validateSettings(next); err != nil {
@@ -101,6 +126,11 @@ func defaultSettings() Settings {
 		APIBaseURL:            "",
 		AuthMode:              "password",
 		RequestTimeoutSeconds: 15,
+		UIPrefs: UIPrefs{
+			ThemeMode:     "system",
+			PalettePreset: "ocean",
+			NavCollapsed:  false,
+		},
 	}
 }
 
@@ -112,6 +142,13 @@ func normalizeSettings(in Settings) Settings {
 	}
 	if out.RequestTimeoutSeconds <= 0 {
 		out.RequestTimeoutSeconds = 15
+	}
+	if out.UIPrefs.ThemeMode == "" {
+		out.UIPrefs.ThemeMode = "system"
+	}
+	out.UIPrefs.PalettePreset = strings.TrimSpace(out.UIPrefs.PalettePreset)
+	if out.UIPrefs.PalettePreset == "" {
+		out.UIPrefs.PalettePreset = "ocean"
 	}
 	if out.AuthMode != "api_token" {
 		out.APIToken = nil
@@ -140,6 +177,12 @@ func validateSettings(in Settings) error {
 	}
 	if in.RequestTimeoutSeconds < 1 || in.RequestTimeoutSeconds > 300 {
 		return errors.New("requestTimeoutSeconds must be between 1 and 300")
+	}
+	if in.UIPrefs.ThemeMode != "light" && in.UIPrefs.ThemeMode != "dark" && in.UIPrefs.ThemeMode != "system" {
+		return errors.New("uiPrefs.themeMode must be light, dark, or system")
+	}
+	if strings.TrimSpace(in.UIPrefs.PalettePreset) == "" {
+		return errors.New("uiPrefs.palettePreset is required")
 	}
 	return nil
 }

@@ -1,12 +1,22 @@
 export const AUTH_MODES = ['password', 'api_token'] as const
 export type AuthMode = (typeof AUTH_MODES)[number]
 
+export const THEME_MODES = ['light', 'dark', 'system'] as const
+export type ThemeMode = (typeof THEME_MODES)[number]
+
+export interface UiPrefs {
+  themeMode: ThemeMode
+  palettePreset: string
+  navCollapsed: boolean
+}
+
 export interface AppSettings {
   apiBaseUrl: string
   authMode: AuthMode
   apiToken?: string
   refreshToken?: string
   requestTimeoutSeconds: number
+  uiPrefs: UiPrefs
 }
 
 export interface SaveSettingsPatch {
@@ -15,6 +25,7 @@ export interface SaveSettingsPatch {
   apiToken?: string
   refreshToken?: string
   requestTimeoutSeconds?: number
+  uiPrefs?: Partial<UiPrefs>
 }
 
 export interface SettingsStore {
@@ -23,8 +34,15 @@ export interface SettingsStore {
   resetSettings: () => Promise<AppSettings>
 }
 
+export const defaultUiPrefs: UiPrefs = {
+  themeMode: 'system',
+  palettePreset: 'ocean',
+  navCollapsed: false,
+}
+
 export const defaultSettings: AppSettings = {
   apiBaseUrl: '',
   authMode: 'password',
   requestTimeoutSeconds: 15,
+  uiPrefs: defaultUiPrefs,
 }

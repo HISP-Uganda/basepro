@@ -1,5 +1,5 @@
 import React from 'react'
-import { Alert, Box, Button, Card, CardContent, Container, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Stack, Typography } from '@mui/material'
 import { useRouter } from '@tanstack/react-router'
 import { createApiClient } from '../api/client'
 
@@ -30,25 +30,18 @@ export function DashboardPage() {
   }
 
   return (
-    <Container
-      maxWidth="md"
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        py: 4,
-      }}
-    >
-      <Card sx={{ width: '100%' }}>
+    <Stack spacing={2.5}>
+      <Box>
+        <Typography variant="h5" component="h1" gutterBottom>
+          Dashboard
+        </Typography>
+        <Typography color="text.secondary">
+          Authenticated dashboard placeholder. Users and Audit modules will be enabled in later milestones.
+        </Typography>
+      </Box>
+      <Card>
         <CardContent>
           <Stack spacing={2}>
-            <Box>
-              <Typography variant="h5" component="h1" gutterBottom>
-                Dashboard
-              </Typography>
-              <Typography color="text.secondary">Authenticated placeholder content.</Typography>
-            </Box>
             <Box>
               <Button variant="outlined" onClick={onLoadProfile} disabled={loading}>
                 {loading ? 'Loading...' : 'Load Profile'}
@@ -58,6 +51,6 @@ export function DashboardPage() {
           </Stack>
         </CardContent>
       </Card>
-    </Container>
+    </Stack>
   )
 }
