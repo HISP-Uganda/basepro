@@ -20,10 +20,12 @@ type Config struct {
 		ShutdownTimeoutSeconds int    `mapstructure:"shutdown_timeout_seconds"`
 	} `mapstructure:"server"`
 	Database struct {
-		DSN          string `mapstructure:"dsn"`
-		MaxOpenConns int    `mapstructure:"max_open_conns"`
-		MaxIdleConns int    `mapstructure:"max_idle_conns"`
-		AutoMigrate  bool   `mapstructure:"auto_migrate"`
+		DSN                           string `mapstructure:"dsn"`
+		MaxOpenConns                  int    `mapstructure:"max_open_conns"`
+		MaxIdleConns                  int    `mapstructure:"max_idle_conns"`
+		AutoMigrate                   bool   `mapstructure:"auto_migrate"`
+		AutoMigrateLockTimeoutSeconds int    `mapstructure:"auto_migrate_lock_timeout_seconds"`
+		MigrationsPath                string `mapstructure:"migrations_path"`
 	} `mapstructure:"database"`
 	Auth struct {
 		AccessTokenTTLSeconds  int    `mapstructure:"access_token_ttl_seconds"`
@@ -117,7 +119,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.shutdown_timeout_seconds", 10)
 	v.SetDefault("database.max_open_conns", 10)
 	v.SetDefault("database.max_idle_conns", 5)
-	v.SetDefault("database.auto_migrate", true)
+	v.SetDefault("database.auto_migrate", false)
+	v.SetDefault("database.auto_migrate_lock_timeout_seconds", 30)
+	v.SetDefault("database.migrations_path", "file://./migrations")
 	v.SetDefault("auth.access_token_ttl_seconds", 900)
 	v.SetDefault("auth.refresh_token_ttl_seconds", 604800)
 	v.SetDefault("auth.password_hash_cost", 12)
@@ -134,7 +138,9 @@ func defaultConfig() Config {
 	cfg.Server.ShutdownTimeoutSeconds = 10
 	cfg.Database.MaxOpenConns = 10
 	cfg.Database.MaxIdleConns = 5
-	cfg.Database.AutoMigrate = true
+	cfg.Database.AutoMigrate = false
+	cfg.Database.AutoMigrateLockTimeoutSeconds = 30
+	cfg.Database.MigrationsPath = "file://./migrations"
 	cfg.Auth.AccessTokenTTLSeconds = 900
 	cfg.Auth.RefreshTokenTTLSeconds = 604800
 	cfg.Auth.PasswordHashCost = 12
@@ -172,6 +178,12 @@ func validate(cfg Config) error {
 	}
 	if cfg.Database.MaxIdleConns <= 0 {
 		return errors.New("database.max_idle_conns must be > 0")
+	}
+	if cfg.Database.AutoMigrateLockTimeoutSeconds <= 0 {
+		return errors.New("database.auto_migrate_lock_timeout_seconds must be > 0")
+	}
+	if cfg.Database.MigrationsPath == "" {
+		return errors.New("database.migrations_path must not be empty")
 	}
 	if cfg.Auth.AccessTokenTTLSeconds <= 0 {
 		return errors.New("auth.access_token_ttl_seconds must be > 0")

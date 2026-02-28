@@ -430,3 +430,48 @@
 Bug-fix verification:
 - `cd desktop/frontend && npm run build`: PASS
 - `cd desktop/frontend && npm test -- --run`: PASS
+
+## Backend Change — Configurable Startup Auto-Migrate with Advisory Lock (Complete)
+
+### What changed
+- Added a dedicated startup migration package: `backend/internal/migrate`.
+- Startup migration behavior is now configuration-driven with three keys:
+  - `database.auto_migrate` (bool, default `false`)
+  - `database.auto_migrate_lock_timeout_seconds` (int, default `30`)
+  - `database.migrations_path` (string, default `file://./migrations`)
+- Backend startup (`cmd/api`) now runs migration wiring before serving HTTP:
+  - If `database.auto_migrate=false`, migrations are skipped and startup continues.
+  - If `database.auto_migrate=true`, startup attempts migrations via `migrate.Up()`.
+  - `migrate.ErrNoChange` is treated as success.
+  - Any migration error fails fast and prevents the server from starting.
+- Added Postgres advisory-lock coordination in startup migration flow:
+  - acquires advisory lock before migration run
+  - uses context timeout from `database.auto_migrate_lock_timeout_seconds`
+  - returns error if lock cannot be acquired in time
+  - always attempts lock release after migration attempt
+- Added startup migration logging for:
+  - skipped vs running status
+  - start and successful completion
+  - no-change condition
+
+### Example config (dev)
+```yaml
+database:
+  auto_migrate: true
+  auto_migrate_lock_timeout_seconds: 30
+  migrations_path: "file://./migrations"
+```
+
+### Production safety note
+- Default remains `database.auto_migrate=false`.
+- Advisory lock behavior prevents concurrent migration execution across multiple backend instances when auto-migrate is enabled.
+
+### Test coverage added
+- `backend/internal/migrate/runner_test.go`:
+  - `AutoMigrate=false` skips migrator execution.
+  - `ErrNoChange` is treated as success.
+  - advisory-lock acquisition timeout path returns expected error and does not run migrations.
+
+### Verification summary
+- Backend tests: `cd backend && GOCACHE=/tmp/go-build go test ./...` => PASS
+- Frontend route tests: `make desktop-test` => PASS
