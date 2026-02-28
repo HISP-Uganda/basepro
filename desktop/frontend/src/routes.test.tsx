@@ -294,4 +294,26 @@ describe('app routes and auth flow', () => {
       expect(store.saveSettingsMock).toHaveBeenCalledWith(expect.objectContaining({ refreshToken: '' }))
     })
   })
+
+  it('uses correct health endpoint when api base url includes /api/v1', async () => {
+    const store = createMockSettingsStore({
+      ...defaultSettings,
+      apiBaseUrl: 'http://localhost:8080/api/v1',
+      requestTimeoutSeconds: 10,
+    })
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithRouter('/setup', store)
+
+    await screen.findByRole('heading', { name: 'Connect to API' })
+    fireEvent.click(screen.getByRole('button', { name: 'Test Connection' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('http://localhost:8080/api/v1/health', {
+        method: 'GET',
+        signal: expect.any(AbortSignal),
+      })
+    })
+  })
 })

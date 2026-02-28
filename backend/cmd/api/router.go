@@ -17,6 +17,7 @@ import (
 type AppDeps struct {
 	DB                  *sqlx.DB
 	Version             string
+	CORSAllowedOrigins  []string
 	AuthHandler         *auth.Handler
 	AuthService         *auth.Service
 	JWTManager          *auth.JWTManager
@@ -30,6 +31,7 @@ type AppDeps struct {
 func newRouter(deps AppDeps) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.CORS(deps.CORSAllowedOrigins))
 	if deps.AuthService != nil {
 		r.Use(middleware.APITokenAuth(deps.AuthService, deps.APITokenHeaderName, deps.APITokenAllowBearer))
 	}

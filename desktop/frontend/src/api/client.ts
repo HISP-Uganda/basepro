@@ -35,7 +35,8 @@ class ApiError extends Error {
 let refreshPromise: Promise<boolean> | null = null
 
 function normalizeBaseUrl(baseUrl: string) {
-  return baseUrl.trim().replace(/\/$/, '')
+  const trimmed = baseUrl.trim().replace(/\/+$/, '')
+  return trimmed.endsWith('/api/v1') ? trimmed.slice(0, -'/api/v1'.length) : trimmed
 }
 
 function isSessionInvalidCode(code?: string) {

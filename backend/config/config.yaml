@@ -1,6 +1,11 @@
 server:
   port: ":8080"
   shutdown_timeout_seconds: 10
+  cors_allowed_origins:
+    - "http://localhost:5173"
+    - "http://127.0.0.1:5173"
+    - "wails://wails.localhost"
+    - "wails://wails.localhost:*"
 
 database:
   dsn: "postgres://basepro:basepro@127.0.0.1:5432/basepro_dev?sslmode=disable"
@@ -8,7 +13,6 @@ database:
   max_idle_conns: 5
   auto_migrate: false
   auto_migrate_lock_timeout_seconds: 30
-  migrations_path: "file://./migrations"
 
 auth:
   access_token_ttl_seconds: 900

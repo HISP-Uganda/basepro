@@ -61,7 +61,6 @@ func run() error {
 	if err := startupMigrator.Run(ctx, migrate.Config{
 		AutoMigrate: cfg.Database.AutoMigrate,
 		LockTimeout: time.Duration(cfg.Database.AutoMigrateLockTimeoutSeconds) * time.Second,
-		Path:        cfg.Database.MigrationsPath,
 	}, database, cfg.Database.DSN); err != nil {
 		return fmt.Errorf("startup migrations: %w", err)
 	}
@@ -113,6 +112,7 @@ func run() error {
 		Handler: newRouter(AppDeps{
 			DB:                  database,
 			Version:             version,
+			CORSAllowedOrigins:  cfg.Server.CORSAllowedOrigins,
 			AuthHandler:         auth.NewHandler(authService),
 			AuthService:         authService,
 			JWTManager:          jwtManager,
@@ -138,7 +138,6 @@ type cliFlags struct {
 	maxIdleConns     int
 	autoMigrate      bool
 	autoMigrateLock  int
-	migrationsPath   string
 	authAccessTTL    int
 	authRefreshTTL   int
 	authSigningKey   string
@@ -160,7 +159,6 @@ func newFlags() *cliFlags {
 	f.fs.IntVar(&f.maxIdleConns, "database-max-idle-conns", 0, "max idle DB connections")
 	f.fs.BoolVar(&f.autoMigrate, "database-auto-migrate", false, "auto-run migrations on startup")
 	f.fs.IntVar(&f.autoMigrateLock, "database-auto-migrate-lock-timeout", 0, "migration advisory lock timeout in seconds")
-	f.fs.StringVar(&f.migrationsPath, "database-migrations-path", "", "migration source path (for example file://./migrations)")
 	f.fs.IntVar(&f.authAccessTTL, "auth-access-ttl", 0, "access token TTL in seconds")
 	f.fs.IntVar(&f.authRefreshTTL, "auth-refresh-ttl", 0, "refresh token TTL in seconds")
 	f.fs.StringVar(&f.authSigningKey, "auth-jwt-signing-key", "", "JWT signing key")
@@ -191,8 +189,6 @@ func (f *cliFlags) overrides() map[string]any {
 			overrides["database.auto_migrate"] = f.autoMigrate
 		case "database-auto-migrate-lock-timeout":
 			overrides["database.auto_migrate_lock_timeout_seconds"] = f.autoMigrateLock
-		case "database-migrations-path":
-			overrides["database.migrations_path"] = f.migrationsPath
 		case "auth-access-ttl":
 			overrides["auth.access_token_ttl_seconds"] = f.authAccessTTL
 		case "auth-refresh-ttl":
