@@ -1078,3 +1078,51 @@ Verification for this update:
 
 ### Known follow-ups
 - Desktop test suite needs a separate stabilization pass in this workspace before milestone-wide "all frontend tests pass" can be asserted.
+
+## Phase S3 Web — Auth Complete
+
+### What changed
+- Added `AuthProvider` in `web/src/auth/AuthProvider.tsx` with auth state and methods:
+  - `isAuthenticated`
+  - `accessToken` (memory)
+  - `user`
+  - `login(username, password)`
+  - `logout()`
+  - `refresh()`
+- Added auth snapshot/session storage helpers in `web/src/auth/state.ts`:
+  - refresh token persistence in local storage
+  - in-memory auth snapshot for route guards
+- Extended API client (`web/src/lib/api.ts`) to support:
+  - configurable unauthorized handler via `configureApiClient(...)`
+  - automatic one-time retry after 401 when refresh succeeds
+  - per-request options to disable auth injection/retry for login/refresh/logout calls
+- Updated web `LoginPage`:
+  - real username/password submit flow using `auth.login`
+  - success navigation to `/dashboard`
+  - backend `ApiError` message display
+  - Request ID display when present
+- Added route guards in `web/src/routes.tsx`:
+  - `/dashboard` requires authentication
+  - `/login` redirects to `/dashboard` when authenticated
+  - `/` redirects by auth state (`/dashboard` or `/login`)
+- Added/updated auth route tests in `web/src/routes.test.tsx`:
+  - login success redirects
+  - login failure shows backend error + request ID
+  - refresh failure logs out, redirects to `/login`, and shows session-expired message
+  - protected route blocked while logged out
+- Saved prompt traceability copy under `docs/prompts/2026-03-03-phase-s3-web-auth.md` (ignored by git).
+
+### How to run tests
+- Backend: `make backend-test`
+- Desktop: `make desktop-test`
+- Web tests: `make web-test`
+- Web build: `make web-build`
+
+### Verification summary
+- `make backend-test`: PASS
+- `make desktop-test`: PASS
+- `make web-test`: PASS
+- `make web-build`: PASS
+
+### Known follow-ups
+- Vite build emits non-blocking warnings from third-party dependencies about ignored `'use client'` directives.

@@ -1,9 +1,12 @@
 import React from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearAuthSnapshot, persistRefreshToken, setAuthSnapshot } from './auth/state'
+import { apiRequest } from './lib/api'
 import { createAppRouter } from './routes'
+import { SnackbarProvider } from './ui/snackbar'
 
 function renderWithRouter(initialPath: string) {
   const router = createAppRouter([initialPath])
@@ -11,28 +14,141 @@ function renderWithRouter(initialPath: string) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <SnackbarProvider>
+        <RouterProvider router={router} />
+      </SnackbarProvider>
     </QueryClientProvider>,
   )
 }
 
-afterEach(() => {
-  cleanup()
+beforeEach(() => {
+  clearAuthSnapshot()
+  vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:8080/api/v1')
+  vi.stubGlobal('fetch', vi.fn())
 })
 
-describe('web routes baseline', () => {
-  it('renders login route', async () => {
-    renderWithRouter('/login')
-    expect(await screen.findByRole('heading', { name: 'BasePro Web', level: 1 })).toBeInTheDocument()
-  })
+afterEach(() => {
+  cleanup()
+  clearAuthSnapshot()
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
+})
 
-  it('renders dashboard route', async () => {
-    renderWithRouter('/dashboard')
+describe('web auth routes', () => {
+  it('login success redirects to /dashboard', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            accessToken: 'access-token',
+            refreshToken: 'refresh-token',
+            expiresIn: 300,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 1,
+            username: 'admin',
+            roles: ['Admin'],
+            permissions: ['users.read'],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+
+    renderWithRouter('/login')
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /username/i }), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'secret' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+
     expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
   })
 
-  it('renders NotFound for unknown routes', async () => {
-    renderWithRouter('/missing')
-    expect(await screen.findByRole('heading', { name: 'Not Found', level: 1 })).toBeInTheDocument()
+  it('login failure shows backend message and request ID', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'AUTH_UNAUTHORIZED',
+            message: 'Invalid credentials',
+          },
+        }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Request-Id': 'req-401',
+          },
+        },
+      ),
+    )
+
+    renderWithRouter('/login')
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /username/i }), { target: { value: 'bad-user' } })
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'bad-pass' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
+
+    expect(await screen.findByText('Invalid credentials Request ID: req-401')).toBeInTheDocument()
+  })
+
+  it('refresh failure logs out and redirects to /login', async () => {
+    setAuthSnapshot({
+      isAuthenticated: true,
+      accessToken: 'stale-access-token',
+      refreshToken: 'refresh-token',
+      user: {
+        id: 1,
+        username: 'admin',
+        roles: ['Admin'],
+        permissions: [],
+      },
+    })
+    persistRefreshToken('refresh-token')
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'AUTH_EXPIRED',
+              message: 'Access token expired',
+            },
+          }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'AUTH_REFRESH_INVALID',
+              message: 'Refresh invalid',
+            },
+          }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+
+    renderWithRouter('/dashboard')
+    expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
+
+    await expect(apiRequest('/users')).rejects.toMatchObject({
+      code: 'AUTH_EXPIRED',
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'BasePro Web', level: 1 })).toBeInTheDocument()
+    })
+    expect(screen.getByText('Session expired. Please log in again.')).toBeInTheDocument()
+  })
+
+  it('protected route is blocked when logged out', async () => {
+    renderWithRouter('/dashboard')
+    expect(await screen.findByRole('heading', { name: 'BasePro Web', level: 1 })).toBeInTheDocument()
   })
 })

@@ -1,0 +1,225 @@
+import React from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { apiRequest, configureApiClient, type ApiError } from '../lib/api'
+import { useSnackbar } from '../ui/snackbar'
+import {
+  clearAuthSnapshot,
+  getAuthSnapshot,
+  getPersistedRefreshToken,
+  persistRefreshToken,
+  setAuthSnapshot,
+  subscribeAuthSnapshot,
+  type AuthUser,
+} from './state'
+
+interface AuthTokensResponse {
+  accessToken: string
+  refreshToken: string
+  expiresIn: number
+}
+
+interface MeResponse {
+  id: number
+  username: string
+  roles?: string[]
+  permissions?: string[]
+}
+
+interface AuthContextValue {
+  isAuthenticated: boolean
+  accessToken: string | null
+  user: AuthUser | null
+  login: (username: string, password: string) => Promise<void>
+  logout: () => Promise<void>
+  refresh: () => Promise<boolean>
+}
+
+const AuthContext = React.createContext<AuthContextValue | undefined>(undefined)
+
+function toAuthUser(payload: MeResponse): AuthUser {
+  return {
+    id: payload.id,
+    username: payload.username,
+    roles: payload.roles ?? [],
+    permissions: payload.permissions ?? [],
+  }
+}
+
+export function AuthProvider({ children }: React.PropsWithChildren) {
+  const navigate = useNavigate()
+  const { showSnackbar } = useSnackbar()
+  const [snapshot, setSnapshot] = React.useState(getAuthSnapshot())
+  const refreshPromiseRef = React.useRef<Promise<boolean> | null>(null)
+
+  React.useEffect(() => {
+    return subscribeAuthSnapshot(() => {
+      setSnapshot(getAuthSnapshot())
+    })
+  }, [])
+
+  const applySession = React.useCallback((tokens: AuthTokensResponse, user: AuthUser | null) => {
+    persistRefreshToken(tokens.refreshToken)
+    setAuthSnapshot({
+      isAuthenticated: true,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      user,
+    })
+  }, [])
+
+  const clearSession = React.useCallback(() => {
+    clearAuthSnapshot()
+  }, [])
+
+  const refresh = React.useCallback(async (): Promise<boolean> => {
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current
+    }
+
+    refreshPromiseRef.current = (async () => {
+      const refreshToken = getPersistedRefreshToken().trim()
+      if (!refreshToken) {
+        clearSession()
+        return false
+      }
+
+      try {
+        const tokens = await apiRequest<AuthTokensResponse>(
+          '/auth/refresh',
+          {
+            method: 'POST',
+            body: JSON.stringify({ refreshToken }),
+          },
+          { withAuth: false, retryOnUnauthorized: false },
+        )
+
+        const me = await apiRequest<MeResponse>('/auth/me', { method: 'GET' }, { retryOnUnauthorized: false })
+        applySession(tokens, toAuthUser(me))
+        return true
+      } catch {
+        clearSession()
+        return false
+      }
+    })().finally(() => {
+      refreshPromiseRef.current = null
+    })
+
+    return refreshPromiseRef.current
+  }, [applySession, clearSession])
+
+  const handleSessionExpired = React.useCallback(async () => {
+    clearSession()
+    showSnackbar({
+      message: 'Session expired. Please log in again.',
+      severity: 'warning',
+    })
+    await navigate({ to: '/login', replace: true })
+  }, [clearSession, navigate, showSnackbar])
+
+  React.useEffect(() => {
+    configureApiClient({
+      getAccessToken: () => getAuthSnapshot().accessToken,
+      onUnauthorized: async () => {
+        const refreshed = await refresh()
+        if (!refreshed) {
+          await handleSessionExpired()
+        }
+        return refreshed
+      },
+    })
+  }, [handleSessionExpired, refresh])
+
+  const login = React.useCallback(
+    async (username: string, password: string) => {
+      const tokens = await apiRequest<AuthTokensResponse>(
+        '/auth/login',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            username: username.trim(),
+            password,
+          }),
+        },
+        { withAuth: false, retryOnUnauthorized: false },
+      )
+
+      applySession(tokens, null)
+
+      try {
+        const me = await apiRequest<MeResponse>('/auth/me', { method: 'GET' })
+        setAuthSnapshot({
+          ...getAuthSnapshot(),
+          user: toAuthUser(me),
+          isAuthenticated: true,
+        })
+      } catch (error) {
+        clearSession()
+        throw error
+      }
+    },
+    [applySession, clearSession],
+  )
+
+  const logout = React.useCallback(async () => {
+    const refreshToken = getPersistedRefreshToken().trim()
+    if (refreshToken) {
+      try {
+        await apiRequest(
+          '/auth/logout',
+          {
+            method: 'POST',
+            body: JSON.stringify({ refreshToken }),
+          },
+          { withAuth: false, retryOnUnauthorized: false },
+        )
+      } catch {
+        // Ignore logout API failures and clear local session regardless.
+      }
+    }
+    clearSession()
+    await navigate({ to: '/login', replace: true })
+  }, [clearSession, navigate])
+
+  React.useEffect(() => {
+    if (snapshot.isAuthenticated) {
+      return
+    }
+
+    const persistedRefreshToken = getPersistedRefreshToken().trim()
+    if (!persistedRefreshToken) {
+      return
+    }
+
+    void refresh()
+  }, [refresh, snapshot.isAuthenticated])
+
+  const value = React.useMemo<AuthContextValue>(
+    () => ({
+      isAuthenticated: snapshot.isAuthenticated,
+      accessToken: snapshot.accessToken,
+      user: snapshot.user,
+      login,
+      logout,
+      refresh,
+    }),
+    [login, logout, refresh, snapshot.accessToken, snapshot.isAuthenticated, snapshot.user],
+  )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
+  const context = React.useContext(AuthContext)
+  if (!context) {
+    throw new Error('useAuth must be used inside AuthProvider')
+  }
+  return context
+}
+
+export function isApiError(value: unknown): value is ApiError {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const candidate = value as Partial<ApiError>
+  return typeof candidate.code === 'string' && typeof candidate.message === 'string'
+}

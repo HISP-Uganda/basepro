@@ -8,10 +8,17 @@ export type ApiError = {
 type AccessTokenProvider = () => string | null | undefined
 
 type ApiLogger = (message: string, metadata?: Record<string, unknown>) => void
+type UnauthorizedHandler = () => Promise<boolean>
 
 interface ConfigureApiClientOptions {
   getAccessToken?: AccessTokenProvider
   logger?: ApiLogger
+  onUnauthorized?: UnauthorizedHandler
+}
+
+interface ApiRequestOptions {
+  withAuth?: boolean
+  retryOnUnauthorized?: boolean
 }
 
 interface ApiErrorEnvelope {
@@ -24,6 +31,7 @@ interface ApiErrorEnvelope {
 
 let getAccessToken: AccessTokenProvider = () => undefined
 let logger: ApiLogger | undefined
+let onUnauthorized: UnauthorizedHandler | undefined
 
 function normalizeBaseUrl(baseUrl: string) {
   return baseUrl.trim().replace(/\/+$/, '')
@@ -79,22 +87,27 @@ async function parseApiError(response: Response): Promise<ApiError> {
 export function configureApiClient(options: ConfigureApiClientOptions) {
   getAccessToken = options.getAccessToken ?? (() => undefined)
   logger = options.logger
+  onUnauthorized = options.onUnauthorized
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(path: string, init: RequestInit = {}, options: ApiRequestOptions = {}): Promise<T> {
   const baseUrl = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL ?? '')
   if (!baseUrl) {
     throw new Error('VITE_API_BASE_URL is not configured')
   }
 
+  const withAuth = options.withAuth ?? true
+  const retryOnUnauthorized = options.retryOnUnauthorized ?? true
   const headers = new Headers(init.headers)
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
 
-  const accessToken = getAccessToken()
-  if (accessToken) {
-    headers.set('Authorization', `Bearer ${accessToken}`)
+  if (withAuth) {
+    const accessToken = getAccessToken()
+    if (accessToken) {
+      headers.set('Authorization', `Bearer ${accessToken}`)
+    }
   }
 
   const requestUrl = `${baseUrl}${path}`
@@ -108,6 +121,16 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     ...init,
     headers,
   })
+
+  if (response.status === 401 && retryOnUnauthorized && onUnauthorized) {
+    const refreshed = await onUnauthorized()
+    if (refreshed) {
+      return apiRequest<T>(path, init, {
+        ...options,
+        retryOnUnauthorized: false,
+      })
+    }
+  }
 
   if (!response.ok) {
     throw await parseApiError(response)
