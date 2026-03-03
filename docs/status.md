@@ -1040,3 +1040,41 @@ Verification for this update:
 
 ### Known follow-ups
 - Full web auth flow and RBAC gating are intentionally deferred to later S3 steps.
+
+## Phase S3 Web — API Client Complete
+
+### What changed
+- Added typed web API client at `web/src/lib/api.ts`:
+  - `apiRequest<T>()` wrapper using `import.meta.env.VITE_API_BASE_URL`
+  - optional auth provider wiring via `configureApiClient(...)` and automatic `Authorization: Bearer <accessToken>` attachment
+  - standardized non-2xx parsing to:
+    - `type ApiError = { code: string; message: string; details?: unknown; requestId?: string }`
+  - `X-Request-Id` extraction from error responses
+  - sanitized request logging path so `Authorization` is redacted (`[REDACTED]`)
+- Added user-facing error utility at `web/src/lib/errors.ts`:
+  - `toUserFriendlyError(error)`
+  - appends `Request ID: <id>` when present
+- Added global MUI snackbar system at `web/src/ui/snackbar.tsx` and wired it in `web/src/main.tsx`.
+- Added web API-client tests at `web/src/lib/api.test.ts` covering:
+  - standardized error JSON parsing
+  - `X-Request-Id` extraction
+  - Authorization redaction in logger metadata
+  - success response behavior
+- Saved milestone prompt copy under `docs/prompts/2026-03-03-phase-s3-web-api-client.md` (ignored from git).
+
+### How to run
+- Backend tests: `cd backend && GOCACHE=/tmp/go-build go test ./...`
+- Desktop tests: `cd desktop/frontend && npm test -- --run`
+- Desktop build: `cd desktop/frontend && npm run build`
+- Web tests: `cd web && npm test -- --run`
+- Web build: `cd web && npm run build`
+
+### Verification summary
+- Backend tests (`go test ./...`): PASS
+- Web tests (`npm test -- --run`): PASS
+- Web build (`npm run build`): PASS
+- Desktop build (`npm run build`): PASS
+- Desktop tests (`npm test -- --run`): FAIL in current workspace due existing desktop test issues not introduced by this web change set (route assertions and `structuredClone` availability in current test runtime).
+
+### Known follow-ups
+- Desktop test suite needs a separate stabilization pass in this workspace before milestone-wide "all frontend tests pass" can be asserted.
