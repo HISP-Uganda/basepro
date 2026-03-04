@@ -23,3 +23,17 @@ cp .env.example .env
 - Production build: `npm run build`
 - Tests: `npm run test`
 - Preview build: `npm run preview`
+
+## DataGrid Server Contract
+List pages use a shared server query contract (1-based pagination):
+- Query params:
+  - `page` (1-based integer)
+  - `pageSize` (integer)
+  - `sort` (`<field>:<asc|desc>`)
+  - `filter` (`<field>:<value>`, first active filter item)
+- Response JSON:
+  - `{ items, totalCount, page, pageSize }`
+
+Current web list pages using this contract:
+- `/users` -> `GET /users`
+- `/audit` -> `GET /audit`

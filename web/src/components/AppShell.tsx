@@ -28,6 +28,7 @@ import {
   CloseIcon,
   DashboardRoundedIcon,
   EventAvailableRoundedIcon,
+  FactCheckRoundedIcon,
   GroupRoundedIcon,
   LogoutRoundedArrowIcon,
   MenuIcon,
@@ -50,6 +51,9 @@ function sectionTitle(pathname: string) {
   }
   if (pathname.startsWith('/users')) {
     return 'Users'
+  }
+  if (pathname.startsWith('/audit')) {
+    return 'Audit'
   }
   if (pathname.startsWith('/settings')) {
     return 'Settings'
@@ -119,6 +123,12 @@ export function AppShell() {
       icon: <GroupRoundedIcon fontSize="small" />,
       path: '/users',
       visible: hasPermission('users.read') || hasPermission('users.write'),
+    },
+    {
+      label: 'Audit',
+      icon: <FactCheckRoundedIcon fontSize="small" />,
+      path: '/audit',
+      visible: hasPermission('audit.read'),
     },
     {
       label: 'Settings',

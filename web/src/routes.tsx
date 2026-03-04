@@ -11,6 +11,7 @@ import {
 import App from './App'
 import { getAuthSnapshot } from './auth/state'
 import { AppShell } from './components/AppShell'
+import { AuditPage } from './pages/AuditPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EmployeesPage } from './pages/EmployeesPage'
 import { LeavePage } from './pages/LeavePage'
@@ -93,6 +94,12 @@ const usersRoute = createRoute({
   component: () => (hasPermission('users.read') || hasPermission('users.write') ? <UsersPage /> : <NotAuthorizedPage />),
 })
 
+const auditRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: '/audit',
+  component: () => (hasPermission('audit.read') ? <AuditPage /> : <NotAuthorizedPage />),
+})
+
 const settingsRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: '/settings',
@@ -108,6 +115,7 @@ const routeTree = rootRoute.addChildren([
     leaveRoute,
     payrollRoute,
     usersRoute,
+    auditRoute,
     settingsRoute,
   ]),
 ])

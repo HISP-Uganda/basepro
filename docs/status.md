@@ -1327,3 +1327,35 @@ Verification for this update:
 ### Known follow-ups
 - One non-blocking test console warning appears from MUI Select popover anchor validation in jsdom when opening the theme mode menu.
 - Existing Vite third-party warnings (`'use client'`, chunk-size warning) remain unchanged.
+
+## Web — DataGrid Foundation (Milestone 9 parity) Complete
+
+### What changed
+- Added reusable web DataGrid wrapper: `web/src/components/datagrid/AppDataGrid.tsx`.
+  - Required `storageKey`.
+  - Server-side pagination, sorting, filtering.
+  - Column visibility and reordering.
+  - Density selector and CSV export toolbar.
+  - Bold headers styling.
+  - Pinned columns behind an explicit feature flag (`enablePinnedColumns`) to gracefully no-op when unsupported.
+  - Standardized snackbar error handling with `X-Request-Id` support (no stack traces).
+- Added per-table DataGrid preference persistence helper: `web/src/components/datagrid/storage.ts`.
+  - Namespaced key format: `app.datagrid.<storageKey>.v1`.
+  - Stores `pageSize`, visibility, order, density, pinned columns.
+  - Schema-safe loading with default fallback and optional migration hook.
+- Added shared server list query contract helper: `web/src/lib/pagination.ts`.
+- Replaced web users placeholder page with DataGrid integration: `web/src/pages/UsersPage.tsx`.
+- Added web audit page with DataGrid integration: `web/src/pages/AuditPage.tsx`.
+- Added `/audit` route and AppShell nav/title integration with RBAC gating.
+- Documented the web list query/response contract in `web/README.md`.
+- Saved prompt traceability copy under `docs/prompts/milestone-9-web-parity.md` (prompt directory is gitignored).
+
+### Tests and verification
+- Web tests: PASS (`cd web && npm run test`)
+- Web build: PASS (`cd web && npm run build`)
+- Backend tests: PASS (`cd backend && go test ./...`)
+- Desktop frontend tests: PASS (`cd desktop/frontend && npm test`)
+
+### Known follow-ups
+- Vite build emits existing upstream warnings (`"use client"` directive noise and chunk size warning); build still passes.
+- Pinned columns remain feature-flagged for web until enabling a supported DataGrid tier/config.
