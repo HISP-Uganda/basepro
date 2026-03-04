@@ -91,7 +91,9 @@ func newRouter(deps AppDeps) *gin.Engine {
 		usersGroup := api.Group("/users")
 		usersGroup.Use(middleware.ResolveJWTPrincipal(deps.JWTManager), middleware.RequireAuth(), middleware.RequireJWTUser())
 		usersGroup.GET("", middleware.RequirePermission(deps.RBACService, "users.read"), deps.UsersHandler.List)
+		usersGroup.GET("/:id", middleware.RequirePermission(deps.RBACService, "users.read"), deps.UsersHandler.Get)
 		usersGroup.POST("", middleware.RequirePermission(deps.RBACService, "users.write"), deps.UsersHandler.Create)
+		usersGroup.PUT("/:id", middleware.RequirePermission(deps.RBACService, "users.write"), deps.UsersHandler.Put)
 		usersGroup.PATCH("/:id", middleware.RequirePermission(deps.RBACService, "users.write"), deps.UsersHandler.Patch)
 		usersGroup.POST("/:id/reset-password", middleware.RequirePermission(deps.RBACService, "users.write"), deps.UsersHandler.ResetPassword)
 	}

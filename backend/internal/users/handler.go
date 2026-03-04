@@ -19,16 +19,33 @@ func NewHandler(service *Service) *Handler {
 }
 
 type createUserRequest struct {
-	Username string   `json:"username"`
-	Password string   `json:"password"`
-	IsActive *bool    `json:"isActive"`
-	Roles    []string `json:"roles"`
+	Username       string   `json:"username"`
+	Password       string   `json:"password"`
+	Email          *string  `json:"email"`
+	Language       *string  `json:"language"`
+	FirstName      *string  `json:"firstName"`
+	LastName       *string  `json:"lastName"`
+	DisplayName    *string  `json:"displayName"`
+	PhoneNumber    *string  `json:"phoneNumber"`
+	WhatsappNumber *string  `json:"whatsappNumber"`
+	TelegramHandle *string  `json:"telegramHandle"`
+	IsActive       *bool    `json:"isActive"`
+	Roles          []string `json:"roles"`
 }
 
 type updateUserRequest struct {
-	Username *string   `json:"username"`
-	IsActive *bool     `json:"isActive"`
-	Roles    *[]string `json:"roles"`
+	Username       *string   `json:"username"`
+	Password       *string   `json:"password"`
+	Email          *string   `json:"email"`
+	Language       *string   `json:"language"`
+	FirstName      *string   `json:"firstName"`
+	LastName       *string   `json:"lastName"`
+	DisplayName    *string   `json:"displayName"`
+	PhoneNumber    *string   `json:"phoneNumber"`
+	WhatsappNumber *string   `json:"whatsappNumber"`
+	TelegramHandle *string   `json:"telegramHandle"`
+	IsActive       *bool     `json:"isActive"`
+	Roles          *[]string `json:"roles"`
 }
 
 type resetPasswordRequest struct {
@@ -60,6 +77,22 @@ func (h *Handler) List(c *gin.Context) {
 	})
 }
 
+func (h *Handler) Get(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"id": []string{"invalid user id"}}))
+		return
+	}
+
+	item, err := h.service.GetUser(c.Request.Context(), id)
+	if err != nil {
+		apperror.Write(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, item)
+}
+
 func (h *Handler) Create(c *gin.Context) {
 	principal, ok := principalFromContext(c)
 	if !ok {
@@ -68,8 +101,8 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	var req createUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Username) == "" || strings.TrimSpace(req.Password) == "" {
-		apperror.Write(c, apperror.Validation("username and password are required"))
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"body": []string{"invalid JSON payload"}}))
 		return
 	}
 
@@ -78,11 +111,19 @@ func (h *Handler) Create(c *gin.Context) {
 		isActive = *req.IsActive
 	}
 	created, err := h.service.CreateUser(c.Request.Context(), CreateInput{
-		Username: req.Username,
-		Password: req.Password,
-		IsActive: isActive,
-		Roles:    normalizeRoles(req.Roles),
-		ActorID:  actorUserID(principal),
+		Username:       req.Username,
+		Password:       req.Password,
+		Email:          req.Email,
+		Language:       req.Language,
+		FirstName:      req.FirstName,
+		LastName:       req.LastName,
+		DisplayName:    req.DisplayName,
+		PhoneNumber:    req.PhoneNumber,
+		WhatsappNumber: req.WhatsappNumber,
+		TelegramHandle: req.TelegramHandle,
+		IsActive:       isActive,
+		Roles:          normalizeRoles(req.Roles),
+		ActorID:        actorUserID(principal),
 	})
 	if err != nil {
 		apperror.Write(c, err)
@@ -93,6 +134,14 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 func (h *Handler) Patch(c *gin.Context) {
+	h.update(c)
+}
+
+func (h *Handler) Put(c *gin.Context) {
+	h.update(c)
+}
+
+func (h *Handler) update(c *gin.Context) {
 	principal, ok := principalFromContext(c)
 	if !ok {
 		apperror.Write(c, apperror.Unauthorized("Unauthorized"))
@@ -101,21 +150,17 @@ func (h *Handler) Patch(c *gin.Context) {
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		apperror.Write(c, apperror.Validation("invalid user id"))
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"id": []string{"invalid user id"}}))
 		return
 	}
 
 	var req updateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		apperror.Write(c, apperror.Validation("invalid user payload"))
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"body": []string{"invalid JSON payload"}}))
 		return
 	}
-	if req.Username == nil && req.Roles == nil && req.IsActive == nil {
-		apperror.Write(c, apperror.Validation("at least one update field is required"))
-		return
-	}
-	if req.Username != nil && strings.TrimSpace(*req.Username) == "" {
-		apperror.Write(c, apperror.Validation("username cannot be empty"))
+	if req.Username == nil && req.Password == nil && req.Email == nil && req.Language == nil && req.FirstName == nil && req.LastName == nil && req.DisplayName == nil && req.PhoneNumber == nil && req.WhatsappNumber == nil && req.TelegramHandle == nil && req.Roles == nil && req.IsActive == nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"body": []string{"at least one update field is required"}}))
 		return
 	}
 
@@ -125,18 +170,28 @@ func (h *Handler) Patch(c *gin.Context) {
 		roles = &cleaned
 	}
 
-	if err := h.service.UpdateUser(c.Request.Context(), UpdateInput{
-		UserID:   id,
-		Username: req.Username,
-		Roles:    roles,
-		IsActive: req.IsActive,
-		ActorID:  actorUserID(principal),
-	}); err != nil {
-		apperror.Write(c, err)
+	updated, updateErr := h.service.UpdateUser(c.Request.Context(), UpdateInput{
+		UserID:         id,
+		Username:       req.Username,
+		Password:       req.Password,
+		Email:          req.Email,
+		Language:       req.Language,
+		FirstName:      req.FirstName,
+		LastName:       req.LastName,
+		DisplayName:    req.DisplayName,
+		PhoneNumber:    req.PhoneNumber,
+		WhatsappNumber: req.WhatsappNumber,
+		TelegramHandle: req.TelegramHandle,
+		Roles:          roles,
+		IsActive:       req.IsActive,
+		ActorID:        actorUserID(principal),
+	})
+	if updateErr != nil {
+		apperror.Write(c, updateErr)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	c.JSON(http.StatusOK, updated)
 }
 
 func (h *Handler) ResetPassword(c *gin.Context) {
@@ -148,13 +203,13 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		apperror.Write(c, apperror.Validation("invalid user id"))
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"id": []string{"invalid user id"}}))
 		return
 	}
 
 	var req resetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Password) == "" {
-		apperror.Write(c, apperror.Validation("password is required"))
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"password": []string{"is required"}}))
 		return
 	}
 
@@ -210,7 +265,7 @@ func filterForUsers(field, value string) string {
 	if strings.TrimSpace(value) == "" {
 		return ""
 	}
-	if field == "" || field == "username" {
+	if field == "" || field == "username" || field == "email" || field == "displayName" {
 		return value
 	}
 	return ""

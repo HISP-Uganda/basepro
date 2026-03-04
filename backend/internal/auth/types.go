@@ -8,10 +8,11 @@ const (
 )
 
 type User struct {
-	ID           int64  `db:"id"`
-	Username     string `db:"username"`
-	PasswordHash string `db:"password_hash"`
-	IsActive     bool   `db:"is_active"`
+	ID           int64      `db:"id"`
+	Username     string     `db:"username"`
+	PasswordHash string     `db:"password_hash"`
+	IsActive     bool       `db:"is_active"`
+	LastLoginAt  *time.Time `db:"last_login_at"`
 }
 
 type RefreshToken struct {

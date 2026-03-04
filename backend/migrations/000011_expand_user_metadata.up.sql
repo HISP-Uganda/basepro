@@ -1,0 +1,14 @@
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS email TEXT,
+    ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'English',
+    ADD COLUMN IF NOT EXISTS first_name TEXT,
+    ADD COLUMN IF NOT EXISTS last_name TEXT,
+    ADD COLUMN IF NOT EXISTS display_name TEXT,
+    ADD COLUMN IF NOT EXISTS phone_number TEXT,
+    ADD COLUMN IF NOT EXISTS whatsapp_number TEXT,
+    ADD COLUMN IF NOT EXISTS telegram_handle TEXT,
+    ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx
+    ON users (LOWER(email))
+    WHERE email IS NOT NULL;

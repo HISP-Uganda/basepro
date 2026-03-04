@@ -101,6 +101,16 @@ func (r *fakeRepo) RevokeAllActiveRefreshTokensForUser(_ context.Context, userID
 	return nil
 }
 
+func (r *fakeRepo) UpdateUserLastLoginAt(_ context.Context, userID int64, at time.Time) error {
+	user, ok := r.usersByID[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	value := at
+	user.LastLoginAt = &value
+	return nil
+}
+
 func (r *fakeRepo) CreateAPIToken(_ context.Context, token APIToken, permissions []string, _ *string) (*APIToken, error) {
 	token.ID = r.nextAPITokenID
 	r.nextAPITokenID++
@@ -238,6 +248,9 @@ func TestLoginSuccessReturnsTokensAndStoresRefreshHash(t *testing.T) {
 	}
 	if stored.TokenHash == resp.RefreshToken {
 		t.Fatal("refresh token must be stored as hash, not plaintext")
+	}
+	if repo.usersByID[user.ID].LastLoginAt == nil {
+		t.Fatal("expected last login timestamp to be updated")
 	}
 }
 

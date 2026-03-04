@@ -71,6 +71,7 @@ func (s *Service) Login(ctx context.Context, username, password, ip, userAgent s
 	if err != nil {
 		return AuthResponse{}, err
 	}
+	_ = s.repo.UpdateUserLastLoginAt(ctx, user.ID, s.now())
 
 	s.logAudit(ctx, audit.Event{
 		Action:      "auth.login.success",

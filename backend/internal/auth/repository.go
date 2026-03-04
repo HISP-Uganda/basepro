@@ -20,6 +20,7 @@ type Repository interface {
 	CreateRefreshToken(ctx context.Context, token RefreshToken) (*RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenID int64, replacedByTokenID *int64, now time.Time) error
 	RevokeAllActiveRefreshTokensForUser(ctx context.Context, userID int64, now time.Time) error
+	UpdateUserLastLoginAt(ctx context.Context, userID int64, at time.Time) error
 
 	CreateAPIToken(ctx context.Context, token APIToken, permissions []string, moduleScope *string) (*APIToken, error)
 	ListAPITokens(ctx context.Context) ([]APIToken, error)
@@ -43,7 +44,7 @@ func NewSQLRepository(db *sqlx.DB) *SQLRepository {
 func (r *SQLRepository) GetUserByUsername(ctx context.Context, username string) (*User, error) {
 	var user User
 	err := r.db.GetContext(ctx, &user, `
-		SELECT id, username, password_hash, is_active
+		SELECT id, username, password_hash, is_active, last_login_at
 		FROM users
 		WHERE username = $1
 	`, username)
@@ -59,7 +60,7 @@ func (r *SQLRepository) GetUserByUsername(ctx context.Context, username string) 
 func (r *SQLRepository) GetUserByID(ctx context.Context, userID int64) (*User, error) {
 	var user User
 	err := r.db.GetContext(ctx, &user, `
-		SELECT id, username, password_hash, is_active
+		SELECT id, username, password_hash, is_active, last_login_at
 		FROM users
 		WHERE id = $1
 	`, userID)
@@ -123,6 +124,18 @@ func (r *SQLRepository) RevokeAllActiveRefreshTokensForUser(ctx context.Context,
 	`, userID, now)
 	if err != nil {
 		return fmt.Errorf("revoke active refresh tokens: %w", err)
+	}
+	return nil
+}
+
+func (r *SQLRepository) UpdateUserLastLoginAt(ctx context.Context, userID int64, at time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE users
+		SET last_login_at = $2, updated_at = $2
+		WHERE id = $1
+	`, userID, at)
+	if err != nil {
+		return fmt.Errorf("update user last login at: %w", err)
 	}
 	return nil
 }
@@ -259,7 +272,7 @@ func (r *SQLRepository) EnsureUser(ctx context.Context, username, passwordHash s
 	err := r.db.GetContext(ctx, &created, `
 		INSERT INTO users (username, password_hash, is_active, created_at, updated_at)
 		VALUES ($1, $2, $3, NOW(), NOW())
-		RETURNING id, username, password_hash, is_active
+		RETURNING id, username, password_hash, is_active, last_login_at
 	`, username, passwordHash, isActive)
 	if err != nil {
 		return nil, fmt.Errorf("ensure user: %w", err)

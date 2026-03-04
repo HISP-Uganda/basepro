@@ -12,16 +12,26 @@ import (
 	"basepro/backend/internal/audit"
 	"basepro/backend/internal/auth"
 	"basepro/backend/internal/rbac"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 )
 
 type UserRecord struct {
-	ID        int64     `db:"id" json:"id"`
-	Username  string    `db:"username" json:"username"`
-	IsActive  bool      `db:"is_active" json:"isActive"`
-	CreatedAt time.Time `db:"created_at" json:"createdAt"`
-	UpdatedAt time.Time `db:"updated_at" json:"updatedAt"`
-	Roles     []string  `json:"roles"`
+	ID             int64      `db:"id" json:"id"`
+	Username       string     `db:"username" json:"username"`
+	Email          *string    `db:"email" json:"email,omitempty"`
+	Language       string     `db:"language" json:"language"`
+	FirstName      *string    `db:"first_name" json:"firstName,omitempty"`
+	LastName       *string    `db:"last_name" json:"lastName,omitempty"`
+	DisplayName    *string    `db:"display_name" json:"displayName,omitempty"`
+	PhoneNumber    *string    `db:"phone_number" json:"phoneNumber,omitempty"`
+	WhatsappNumber *string    `db:"whatsapp_number" json:"whatsappNumber,omitempty"`
+	TelegramHandle *string    `db:"telegram_handle" json:"telegramHandle,omitempty"`
+	IsActive       bool       `db:"is_active" json:"isActive"`
+	LastLoginAt    *time.Time `db:"last_login_at" json:"lastLoginAt,omitempty"`
+	CreatedAt      time.Time  `db:"created_at" json:"createdAt"`
+	UpdatedAt      time.Time  `db:"updated_at" json:"updatedAt"`
+	Roles          []string   `json:"roles"`
 }
 
 type ListQuery struct {
@@ -39,11 +49,40 @@ type ListResult struct {
 	PageSize int
 }
 
+type CreateUserParams struct {
+	Username       string
+	PasswordHash   string
+	Email          *string
+	Language       string
+	FirstName      *string
+	LastName       *string
+	DisplayName    *string
+	PhoneNumber    *string
+	WhatsappNumber *string
+	TelegramHandle *string
+	IsActive       bool
+}
+
+type UpdateUserParams struct {
+	UserID         int64
+	Username       *string
+	PasswordHash   *string
+	Email          *string
+	Language       *string
+	FirstName      *string
+	LastName       *string
+	DisplayName    *string
+	PhoneNumber    *string
+	WhatsappNumber *string
+	TelegramHandle *string
+	IsActive       *bool
+}
+
 type Repository interface {
 	ListUsers(ctx context.Context, query ListQuery) (ListResult, error)
-	CreateUser(ctx context.Context, username, passwordHash string, isActive bool) (UserRecord, error)
-	SetUserActive(ctx context.Context, userID int64, isActive bool) error
-	SetUsername(ctx context.Context, userID int64, username string) error
+	GetUserByID(ctx context.Context, userID int64) (UserRecord, error)
+	CreateUser(ctx context.Context, params CreateUserParams) (UserRecord, error)
+	UpdateUser(ctx context.Context, params UpdateUserParams) (UserRecord, error)
 	SetPassword(ctx context.Context, userID int64, passwordHash string) error
 }
 
@@ -66,7 +105,7 @@ func normalizeListQuery(query ListQuery) ListQuery {
 	}
 	sortField := strings.TrimSpace(query.SortField)
 	switch sortField {
-	case "id", "username", "created_at", "updated_at", "is_active":
+	case "id", "username", "email", "display_name", "created_at", "updated_at", "last_login_at", "is_active":
 	default:
 		sortField = "id"
 	}
@@ -97,7 +136,7 @@ func (r *SQLRepository) ListUsers(ctx context.Context, query ListQuery) (ListRes
 	countArgs := []any{}
 	countQuery := `SELECT COUNT(*) FROM users`
 	if hasFilter {
-		countQuery += ` WHERE username ILIKE $1`
+		countQuery += ` WHERE username ILIKE $1 OR COALESCE(email, '') ILIKE $1 OR COALESCE(display_name, '') ILIKE $1`
 		countArgs = append(countArgs, filterValue)
 	}
 	if err := r.db.GetContext(ctx, &total, countQuery, countArgs...); err != nil {
@@ -107,38 +146,70 @@ func (r *SQLRepository) ListUsers(ctx context.Context, query ListQuery) (ListRes
 	items := []UserRecord{}
 	selectArgs := []any{q.PageSize, offset}
 	selectQuery := `
-		SELECT id, username, is_active, created_at, updated_at
+		SELECT id, username, email, language, first_name, last_name, display_name,
+		       phone_number, whatsapp_number, telegram_handle, is_active, last_login_at,
+		       created_at, updated_at
 		FROM users
 	`
 	if hasFilter {
-		selectQuery += ` WHERE username ILIKE $3`
+		selectQuery += ` WHERE username ILIKE $3 OR COALESCE(email, '') ILIKE $3 OR COALESCE(display_name, '') ILIKE $3`
 		selectArgs = append(selectArgs, filterValue)
 	}
 	selectQuery += fmt.Sprintf(" ORDER BY %s %s LIMIT $1 OFFSET $2", q.SortField, strings.ToUpper(q.SortOrder))
 
-	err := r.db.SelectContext(ctx, &items, selectQuery, selectArgs...)
-	if err != nil {
+	if err := r.db.SelectContext(ctx, &items, selectQuery, selectArgs...); err != nil {
 		return ListResult{}, fmt.Errorf("list users: %w", err)
 	}
 	for i := range items {
 		items[i].Roles = []string{}
 	}
 
-	return ListResult{
-		Items:    items,
-		Total:    total,
-		Page:     q.Page,
-		PageSize: q.PageSize,
-	}, nil
+	return ListResult{Items: items, Total: total, Page: q.Page, PageSize: q.PageSize}, nil
 }
 
-func (r *SQLRepository) CreateUser(ctx context.Context, username, passwordHash string, isActive bool) (UserRecord, error) {
+func (r *SQLRepository) GetUserByID(ctx context.Context, userID int64) (UserRecord, error) {
 	var record UserRecord
 	err := r.db.GetContext(ctx, &record, `
-		INSERT INTO users (username, password_hash, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
-		RETURNING id, username, is_active, created_at, updated_at
-	`, strings.TrimSpace(username), passwordHash, isActive)
+		SELECT id, username, email, language, first_name, last_name, display_name,
+		       phone_number, whatsapp_number, telegram_handle, is_active, last_login_at,
+		       created_at, updated_at
+		FROM users
+		WHERE id = $1
+	`, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return UserRecord{}, sql.ErrNoRows
+		}
+		return UserRecord{}, fmt.Errorf("get user by id: %w", err)
+	}
+	record.Roles = []string{}
+	return record, nil
+}
+
+func (r *SQLRepository) CreateUser(ctx context.Context, params CreateUserParams) (UserRecord, error) {
+	var record UserRecord
+	err := r.db.GetContext(ctx, &record, `
+		INSERT INTO users (
+			username, password_hash, email, language, first_name, last_name, display_name,
+			phone_number, whatsapp_number, telegram_handle, is_active, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+		RETURNING id, username, email, language, first_name, last_name, display_name,
+		          phone_number, whatsapp_number, telegram_handle, is_active, last_login_at,
+		          created_at, updated_at
+	`,
+		params.Username,
+		params.PasswordHash,
+		params.Email,
+		params.Language,
+		params.FirstName,
+		params.LastName,
+		params.DisplayName,
+		params.PhoneNumber,
+		params.WhatsappNumber,
+		params.TelegramHandle,
+		params.IsActive,
+	)
 	if err != nil {
 		return UserRecord{}, fmt.Errorf("create user: %w", err)
 	}
@@ -146,28 +217,78 @@ func (r *SQLRepository) CreateUser(ctx context.Context, username, passwordHash s
 	return record, nil
 }
 
-func (r *SQLRepository) SetUserActive(ctx context.Context, userID int64, isActive bool) error {
-	res, err := r.db.ExecContext(ctx, `UPDATE users SET is_active = $2, updated_at = NOW() WHERE id = $1`, userID, isActive)
-	if err != nil {
-		return fmt.Errorf("set user active: %w", err)
-	}
-	rows, err := res.RowsAffected()
-	if err == nil && rows == 0 {
-		return sql.ErrNoRows
-	}
-	return nil
-}
+func (r *SQLRepository) UpdateUser(ctx context.Context, params UpdateUserParams) (UserRecord, error) {
+	sets := []string{}
+	args := []any{}
 
-func (r *SQLRepository) SetUsername(ctx context.Context, userID int64, username string) error {
-	res, err := r.db.ExecContext(ctx, `UPDATE users SET username = $2, updated_at = NOW() WHERE id = $1`, userID, strings.TrimSpace(username))
-	if err != nil {
-		return fmt.Errorf("set username: %w", err)
+	if params.Username != nil {
+		args = append(args, *params.Username)
+		sets = append(sets, fmt.Sprintf("username = $%d", len(args)))
 	}
-	rows, err := res.RowsAffected()
-	if err == nil && rows == 0 {
-		return sql.ErrNoRows
+	if params.PasswordHash != nil {
+		args = append(args, *params.PasswordHash)
+		sets = append(sets, fmt.Sprintf("password_hash = $%d", len(args)))
 	}
-	return nil
+	if params.Email != nil {
+		args = append(args, params.Email)
+		sets = append(sets, fmt.Sprintf("email = $%d", len(args)))
+	}
+	if params.Language != nil {
+		args = append(args, *params.Language)
+		sets = append(sets, fmt.Sprintf("language = $%d", len(args)))
+	}
+	if params.FirstName != nil {
+		args = append(args, params.FirstName)
+		sets = append(sets, fmt.Sprintf("first_name = $%d", len(args)))
+	}
+	if params.LastName != nil {
+		args = append(args, params.LastName)
+		sets = append(sets, fmt.Sprintf("last_name = $%d", len(args)))
+	}
+	if params.DisplayName != nil {
+		args = append(args, params.DisplayName)
+		sets = append(sets, fmt.Sprintf("display_name = $%d", len(args)))
+	}
+	if params.PhoneNumber != nil {
+		args = append(args, params.PhoneNumber)
+		sets = append(sets, fmt.Sprintf("phone_number = $%d", len(args)))
+	}
+	if params.WhatsappNumber != nil {
+		args = append(args, params.WhatsappNumber)
+		sets = append(sets, fmt.Sprintf("whatsapp_number = $%d", len(args)))
+	}
+	if params.TelegramHandle != nil {
+		args = append(args, params.TelegramHandle)
+		sets = append(sets, fmt.Sprintf("telegram_handle = $%d", len(args)))
+	}
+	if params.IsActive != nil {
+		args = append(args, *params.IsActive)
+		sets = append(sets, fmt.Sprintf("is_active = $%d", len(args)))
+	}
+
+	if len(sets) == 0 {
+		return r.GetUserByID(ctx, params.UserID)
+	}
+
+	args = append(args, params.UserID)
+	query := fmt.Sprintf(`
+		UPDATE users
+		SET %s, updated_at = NOW()
+		WHERE id = $%d
+		RETURNING id, username, email, language, first_name, last_name, display_name,
+		          phone_number, whatsapp_number, telegram_handle, is_active, last_login_at,
+		          created_at, updated_at
+	`, strings.Join(sets, ", "), len(args))
+
+	var record UserRecord
+	if err := r.db.GetContext(ctx, &record, query, args...); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return UserRecord{}, sql.ErrNoRows
+		}
+		return UserRecord{}, fmt.Errorf("update user: %w", err)
+	}
+	record.Roles = []string{}
+	return record, nil
 }
 
 func (r *SQLRepository) SetPassword(ctx context.Context, userID int64, passwordHash string) error {
@@ -208,34 +329,77 @@ func (s *Service) ListUsers(ctx context.Context, query ListQuery) (ListResult, e
 	return users, nil
 }
 
+func (s *Service) GetUser(ctx context.Context, userID int64) (UserRecord, error) {
+	record, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return UserRecord{}, apperror.ValidationWithDetails("validation failed", map[string]any{"id": []string{"user not found"}})
+		}
+		return UserRecord{}, err
+	}
+	roles, roleErr := s.rbacService.RoleNamesForUser(ctx, record.ID)
+	if roleErr != nil {
+		return UserRecord{}, roleErr
+	}
+	record.Roles = roles
+	return record, nil
+}
+
 type CreateInput struct {
-	Username string
-	Password string
-	IsActive bool
-	Roles    []string
-	ActorID  *int64
+	Username       string
+	Password       string
+	Email          *string
+	Language       *string
+	FirstName      *string
+	LastName       *string
+	DisplayName    *string
+	PhoneNumber    *string
+	WhatsappNumber *string
+	TelegramHandle *string
+	IsActive       bool
+	Roles          []string
+	ActorID        *int64
 }
 
 func (s *Service) CreateUser(ctx context.Context, in CreateInput) (UserRecord, error) {
-	if strings.TrimSpace(in.Username) == "" || strings.TrimSpace(in.Password) == "" {
-		return UserRecord{}, apperror.Validation("username and password are required")
+	normalized, validationDetails := normalizeCreateInput(in)
+	if len(validationDetails) > 0 {
+		return UserRecord{}, apperror.ValidationWithDetails("validation failed", validationDetails)
 	}
-	hash, err := auth.HashPassword(in.Password, s.passwordHashCost)
+
+	hash, err := auth.HashPassword(normalized.Password, s.passwordHashCost)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return UserRecord{}, apperror.Validation("one or more roles are invalid")
+			return UserRecord{}, apperror.ValidationWithDetails("validation failed", map[string]any{"roles": []string{"one or more roles are invalid"}})
 		}
 		return UserRecord{}, err
 	}
-	created, err := s.repo.CreateUser(ctx, in.Username, hash, in.IsActive)
+
+	created, err := s.repo.CreateUser(ctx, CreateUserParams{
+		Username:       normalized.Username,
+		PasswordHash:   hash,
+		Email:          normalized.Email,
+		Language:       normalized.Language,
+		FirstName:      normalized.FirstName,
+		LastName:       normalized.LastName,
+		DisplayName:    normalized.DisplayName,
+		PhoneNumber:    normalized.PhoneNumber,
+		WhatsappNumber: normalized.WhatsappNumber,
+		TelegramHandle: normalized.TelegramHandle,
+		IsActive:       normalized.IsActive,
+	})
 	if err != nil {
+		if mapped := mapConstraintError(err); mapped != nil {
+			return UserRecord{}, mapped
+		}
 		return UserRecord{}, err
 	}
-	for _, role := range in.Roles {
-		if strings.TrimSpace(role) == "" {
-			continue
-		}
+
+	for _, role := range normalized.Roles {
 		if assignErr := s.rbacService.AssignRoleToUser(ctx, created.ID, role); assignErr != nil {
+			if errors.Is(assignErr, sql.ErrNoRows) {
+				return UserRecord{}, apperror.ValidationWithDetails("validation failed", map[string]any{"roles": []string{"one or more roles are invalid"}})
+			}
 			return UserRecord{}, assignErr
 		}
 	}
@@ -244,61 +408,119 @@ func (s *Service) CreateUser(ctx context.Context, in CreateInput) (UserRecord, e
 		return UserRecord{}, err
 	}
 	created.Roles = r
+
 	s.logAudit(ctx, audit.Event{Action: "users.create", ActorUserID: in.ActorID, EntityType: "user", EntityID: strPtr(created.Username), Metadata: map[string]any{"user_id": created.ID, "roles": created.Roles}})
 	return created, nil
 }
 
 type UpdateInput struct {
-	UserID    int64
-	Username  *string
-	Roles     *[]string
-	IsActive  *bool
-	ActorID   *int64
-	ResetRBAC bool
+	UserID         int64
+	Username       *string
+	Password       *string
+	Email          *string
+	Language       *string
+	FirstName      *string
+	LastName       *string
+	DisplayName    *string
+	PhoneNumber    *string
+	WhatsappNumber *string
+	TelegramHandle *string
+	Roles          *[]string
+	IsActive       *bool
+	ActorID        *int64
 }
 
-func (s *Service) UpdateUser(ctx context.Context, in UpdateInput) error {
+func (s *Service) UpdateUser(ctx context.Context, in UpdateInput) (UserRecord, error) {
+	existing, err := s.repo.GetUserByID(ctx, in.UserID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return UserRecord{}, apperror.ValidationWithDetails("validation failed", map[string]any{"id": []string{"user not found"}})
+		}
+		return UserRecord{}, err
+	}
+
+	normalized, validationDetails := normalizeUpdateInput(in, existing)
+	if len(validationDetails) > 0 {
+		return UserRecord{}, apperror.ValidationWithDetails("validation failed", validationDetails)
+	}
+
 	metadata := map[string]any{}
-
-	if in.Username != nil {
-		username := strings.TrimSpace(*in.Username)
-		if username != "" {
-			if err := s.repo.SetUsername(ctx, in.UserID, username); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return apperror.Validation("user not found")
-				}
-				return err
-			}
-			metadata["username"] = username
-		}
+	params := UpdateUserParams{UserID: in.UserID}
+	if normalized.Username != nil {
+		params.Username = normalized.Username
+		metadata["username"] = *normalized.Username
+	}
+	if normalized.Email != nil {
+		params.Email = normalized.Email
+		metadata["email"] = normalized.Email
+	}
+	if normalized.Language != nil {
+		params.Language = normalized.Language
+		metadata["language"] = *normalized.Language
+	}
+	if normalized.FirstName != nil {
+		params.FirstName = normalized.FirstName
+		metadata["firstName"] = normalized.FirstName
+	}
+	if normalized.LastName != nil {
+		params.LastName = normalized.LastName
+		metadata["lastName"] = normalized.LastName
+	}
+	if normalized.DisplayName != nil {
+		params.DisplayName = normalized.DisplayName
+		metadata["displayName"] = normalized.DisplayName
+	}
+	if normalized.PhoneNumber != nil {
+		params.PhoneNumber = normalized.PhoneNumber
+		metadata["phoneNumber"] = normalized.PhoneNumber
+	}
+	if normalized.WhatsappNumber != nil {
+		params.WhatsappNumber = normalized.WhatsappNumber
+		metadata["whatsappNumber"] = normalized.WhatsappNumber
+	}
+	if normalized.TelegramHandle != nil {
+		params.TelegramHandle = normalized.TelegramHandle
+		metadata["telegramHandle"] = normalized.TelegramHandle
+	}
+	if normalized.IsActive != nil {
+		params.IsActive = normalized.IsActive
+		metadata["isActive"] = *normalized.IsActive
 	}
 
-	if in.IsActive != nil {
-		if err := s.repo.SetUserActive(ctx, in.UserID, *in.IsActive); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return apperror.Validation("user not found")
-			}
-			return err
+	if normalized.Password != nil {
+		hash, hashErr := auth.HashPassword(*normalized.Password, s.passwordHashCost)
+		if hashErr != nil {
+			return UserRecord{}, hashErr
 		}
-		s.logAudit(ctx, audit.Event{Action: "users.set_active", ActorUserID: in.ActorID, EntityType: "user", EntityID: strPtr(fmt.Sprintf("%d", in.UserID)), Metadata: map[string]any{"is_active": *in.IsActive}})
+		params.PasswordHash = &hash
 	}
 
-	if in.Roles != nil {
-		cleanRoles := make([]string, 0, len(*in.Roles))
-		for _, role := range *in.Roles {
-			if strings.TrimSpace(role) == "" {
-				continue
-			}
-			cleanRoles = append(cleanRoles, strings.TrimSpace(role))
+	updated, err := s.repo.UpdateUser(ctx, params)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return UserRecord{}, apperror.ValidationWithDetails("validation failed", map[string]any{"id": []string{"user not found"}})
 		}
-		if err := s.rbacService.SetUserRoles(ctx, in.UserID, cleanRoles); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return apperror.Validation("one or more roles are invalid")
-			}
-			return err
+		if mapped := mapConstraintError(err); mapped != nil {
+			return UserRecord{}, mapped
 		}
-		metadata["roles"] = cleanRoles
+		return UserRecord{}, err
 	}
+
+	if normalized.Roles != nil {
+		if roleErr := s.rbacService.SetUserRoles(ctx, in.UserID, *normalized.Roles); roleErr != nil {
+			if errors.Is(roleErr, sql.ErrNoRows) {
+				return UserRecord{}, apperror.ValidationWithDetails("validation failed", map[string]any{"roles": []string{"one or more roles are invalid"}})
+			}
+			return UserRecord{}, roleErr
+		}
+		metadata["roles"] = *normalized.Roles
+	}
+
+	roles, rolesErr := s.rbacService.RoleNamesForUser(ctx, updated.ID)
+	if rolesErr != nil {
+		return UserRecord{}, rolesErr
+	}
+	updated.Roles = roles
 
 	if len(metadata) > 0 {
 		s.logAudit(ctx, audit.Event{
@@ -309,8 +531,9 @@ func (s *Service) UpdateUser(ctx context.Context, in UpdateInput) error {
 			Metadata:    metadata,
 		})
 	}
+
 	s.rbacService.InvalidateUser(in.UserID)
-	return nil
+	return updated, nil
 }
 
 func (s *Service) ResetPassword(ctx context.Context, actorID *int64, userID int64, newPassword string) error {
@@ -320,7 +543,7 @@ func (s *Service) ResetPassword(ctx context.Context, actorID *int64, userID int6
 	}
 	if err := s.repo.SetPassword(ctx, userID, hash); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return apperror.Validation("user not found")
+			return apperror.ValidationWithDetails("validation failed", map[string]any{"id": []string{"user not found"}})
 		}
 		return err
 	}
@@ -337,4 +560,21 @@ func (s *Service) logAudit(ctx context.Context, event audit.Event) {
 
 func strPtr(v string) *string {
 	return &v
+}
+
+func mapConstraintError(err error) *apperror.AppError {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return nil
+	}
+	if pgErr.Code != "23505" {
+		return nil
+	}
+	if strings.Contains(pgErr.ConstraintName, "email") {
+		return apperror.ValidationWithDetails("validation failed", map[string]any{"email": []string{"must be unique"}})
+	}
+	if strings.Contains(pgErr.ConstraintName, "username") {
+		return apperror.ValidationWithDetails("validation failed", map[string]any{"username": []string{"must be unique"}})
+	}
+	return apperror.ValidationWithDetails("validation failed", map[string]any{"record": []string{"already exists"}})
 }

@@ -40,6 +40,7 @@ func (r *tokenRepo) RevokeRefreshToken(context.Context, int64, *int64, time.Time
 func (r *tokenRepo) RevokeAllActiveRefreshTokensForUser(context.Context, int64, time.Time) error {
 	return nil
 }
+func (r *tokenRepo) UpdateUserLastLoginAt(context.Context, int64, time.Time) error { return nil }
 func (r *tokenRepo) CreateAPIToken(context.Context, auth.APIToken, []string, *string) (*auth.APIToken, error) {
 	return nil, auth.ErrNotFound
 }
