@@ -53,7 +53,7 @@ describe('web auth routes', () => {
             id: 1,
             username: 'admin',
             roles: ['Admin'],
-            permissions: ['users.read'],
+            permissions: ['users.read', 'settings.read'],
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         ),
@@ -105,7 +105,7 @@ describe('web auth routes', () => {
         id: 1,
         username: 'admin',
         roles: ['Admin'],
-        permissions: [],
+        permissions: ['settings.read'],
       },
     })
     persistRefreshToken('refresh-token')
@@ -150,5 +150,64 @@ describe('web auth routes', () => {
   it('protected route is blocked when logged out', async () => {
     renderWithRouter('/dashboard')
     expect(await screen.findByRole('heading', { name: 'BasePro Web', level: 1 })).toBeInTheDocument()
+  })
+})
+
+describe('web RBAC navigation', () => {
+  it('role Admin sees Payroll module', async () => {
+    setAuthSnapshot({
+      isAuthenticated: true,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      user: {
+        id: 1,
+        username: 'admin',
+        roles: ['Admin'],
+        permissions: ['settings.read'],
+      },
+    })
+
+    renderWithRouter('/settings')
+
+    expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
+    expect(screen.getByText('Payroll')).toBeInTheDocument()
+  })
+
+  it('role Staff does not see Payroll module', async () => {
+    setAuthSnapshot({
+      isAuthenticated: true,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      user: {
+        id: 2,
+        username: 'staff-user',
+        roles: ['Staff'],
+        permissions: ['settings.read'],
+      },
+    })
+
+    renderWithRouter('/settings')
+
+    expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
+    expect(screen.queryByText('Payroll')).not.toBeInTheDocument()
+  })
+
+  it('unauthorized route navigation shows Not Authorized page', async () => {
+    setAuthSnapshot({
+      isAuthenticated: true,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      user: {
+        id: 3,
+        username: 'staff-user',
+        roles: ['Staff'],
+        permissions: ['settings.read'],
+      },
+    })
+
+    renderWithRouter('/users')
+
+    expect(await screen.findByRole('heading', { name: 'Not Authorized', level: 1 })).toBeInTheDocument()
+    expect(screen.getByText('You do not have permission to access this page.')).toBeInTheDocument()
   })
 })

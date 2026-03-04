@@ -1126,3 +1126,50 @@ Verification for this update:
 
 ### Known follow-ups
 - Vite build emits non-blocking warnings from third-party dependencies about ignored `'use client'` directives.
+
+## Phase S3 Web — RBAC + Navigation Complete
+
+### What changed
+- Added RBAC helper utilities in `web/src/rbac/permissions.ts`:
+  - `hasRole(role)`
+  - `hasPermission(permission)`
+  - both read claims from authenticated user snapshot managed by `AuthProvider`.
+- Added authenticated shell layout at `web/src/components/AppShell.tsx`:
+  - Drawer navigation and top app bar for authenticated routes
+  - role/permission-based visibility for module links
+  - hidden restricted nav modules
+  - logout action preserved through existing auth provider logout flow.
+- Updated route structure in `web/src/routes.tsx`:
+  - authenticated parent route now renders `AppShell`
+  - added module routes for `/employees`, `/leave`, `/payroll`, `/users`, `/settings`
+  - unauthorized route access now renders `Not Authorized` page.
+- Added module placeholder pages with `title + Coming soon`:
+  - `EmployeesPage`
+  - `LeavePage`
+  - `PayrollPage`
+  - `UsersPage`
+  - `SettingsPage`
+- Added reusable module placeholder renderer at `web/src/pages/modules/ModulePlaceholderPage.tsx`.
+- Added `web/src/pages/NotAuthorizedPage.tsx`.
+- Updated `DashboardPage` module action buttons so restricted actions are visible but disabled.
+- Added RBAC navigation tests in `web/src/routes.test.tsx`:
+  - role-based module visibility (Admin sees Payroll)
+  - role-based module hiding (Staff does not see Payroll)
+  - unauthorized route navigation handling (`/users` without permission shows `Not Authorized`).
+- Saved prompt traceability copy:
+  - `docs/prompts/2026-03-03-phase-s3-web-rbac-navigation.md` (gitignored)
+
+### How to run tests
+- Backend: `make backend-test`
+- Desktop: `make desktop-test`
+- Web tests: `make web-test`
+- Web build: `make web-build`
+
+### Verification summary
+- `make backend-test`: PASS
+- `make desktop-test`: PASS
+- `make web-test`: PASS
+- `make web-build`: PASS
+
+### Known follow-ups
+- `web` production build still emits non-blocking third-party `'use client'` and chunk-size warnings from existing dependency bundles.
