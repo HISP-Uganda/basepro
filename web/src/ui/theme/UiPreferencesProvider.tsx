@@ -6,6 +6,7 @@ import {
   setMode as persistMode,
   setPreset as persistPreset,
   setCollapseNavByDefault as persistCollapseNavByDefault,
+  setShowFooter as persistShowFooter,
   type UiPreferences,
   type UiThemeMode,
 } from '../preferences'
@@ -17,6 +18,7 @@ interface UiPreferencesContextValue {
   setMode: (mode: UiThemeMode) => void
   setPreset: (preset: string) => void
   setCollapseNavByDefault: (collapseNavByDefault: boolean) => void
+  setShowFooter: (showFooter: boolean) => void
 }
 
 const UiPreferencesContext = React.createContext<UiPreferencesContextValue | undefined>(undefined)
@@ -32,6 +34,7 @@ export function UiPreferencesProvider({ children }: React.PropsWithChildren) {
       mode: loaded.mode,
       preset: sanitizePreset(loaded.preset),
       collapseNavByDefault: loaded.collapseNavByDefault,
+      showFooter: loaded.showFooter,
     }
   })
 
@@ -45,6 +48,7 @@ export function UiPreferencesProvider({ children }: React.PropsWithChildren) {
       mode: next.mode,
       preset: sanitizePreset(next.preset),
       collapseNavByDefault: next.collapseNavByDefault,
+      showFooter: next.showFooter,
     })
   }, [])
 
@@ -54,6 +58,7 @@ export function UiPreferencesProvider({ children }: React.PropsWithChildren) {
       mode: next.mode,
       preset: sanitizePreset(next.preset),
       collapseNavByDefault: next.collapseNavByDefault,
+      showFooter: next.showFooter,
     })
   }, [])
 
@@ -63,6 +68,17 @@ export function UiPreferencesProvider({ children }: React.PropsWithChildren) {
       mode: next.mode,
       preset: sanitizePreset(next.preset),
       collapseNavByDefault: next.collapseNavByDefault,
+      showFooter: next.showFooter,
+    })
+  }, [])
+
+  const setShowFooter = React.useCallback((showFooter: boolean) => {
+    const next = persistShowFooter(showFooter)
+    setPrefs({
+      mode: next.mode,
+      preset: sanitizePreset(next.preset),
+      collapseNavByDefault: next.collapseNavByDefault,
+      showFooter: next.showFooter,
     })
   }, [])
 
@@ -77,8 +93,9 @@ export function UiPreferencesProvider({ children }: React.PropsWithChildren) {
       setMode,
       setPreset,
       setCollapseNavByDefault,
+      setShowFooter,
     }),
-    [prefs, resolvedMode, setMode, setPreset, setCollapseNavByDefault],
+    [prefs, resolvedMode, setMode, setPreset, setCollapseNavByDefault, setShowFooter],
   )
 
   return <UiPreferencesContext.Provider value={value}>{children}</UiPreferencesContext.Provider>

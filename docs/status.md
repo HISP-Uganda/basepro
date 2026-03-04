@@ -1260,3 +1260,70 @@ Verification for this update:
 
 ### Known follow-ups
 - Non-blocking Vite warnings from third-party bundles (`'use client'` directives and chunk-size warning) remain unchanged.
+
+## Web — AppShell Drawer (Responsive + Mini) + Footer Complete
+
+### What changed
+- Upgraded authenticated layout in [AppShell.tsx](/Users/sam/projects/go/basepro/web/src/components/AppShell.tsx):
+  - desktop permanent Drawer supports expanded and mini/collapsed widths
+  - mobile temporary Drawer with hamburger open + close button
+  - AppBar and main content shift smoothly with MUI transitions when drawer state changes
+  - selected nav item highlight is preserved
+  - mobile nav selection closes the Drawer automatically
+  - accessibility improvements: explicit `aria-label` on controls/nav actions and focus handoff to first nav item on mobile open.
+- Added footer support in authenticated shell:
+  - footer appears below main content and stays on authenticated screens
+  - uses theme tokens (`background.paper`, `text.secondary`, `divider`) with subtle styling
+  - footer displays app name + version placeholder.
+- Extended UI preferences persistence:
+  - added `showFooter` to `basepro.web.ui_preferences`
+  - added `setShowFooter(...)`
+  - kept backward-compatible loading defaults for existing stored preferences.
+- Updated settings UI in [SettingsPage.tsx](/Users/sam/projects/go/basepro/web/src/pages/SettingsPage.tsx):
+  - navigation collapsed preference label refined
+  - added `Show footer on authenticated pages` toggle tied to persisted UI prefs.
+- Added/updated tests in [routes.test.tsx](/Users/sam/projects/go/basepro/web/src/routes.test.tsx) and [theme.test.tsx](/Users/sam/projects/go/basepro/web/src/ui/theme/theme.test.tsx):
+  - authenticated `/dashboard` renders AppShell
+  - desktop collapse toggle updates/persists drawer state across reload
+  - mobile drawer opens, closes, and closes after route selection
+  - updated persisted preference assertions for the new `showFooter` key.
+
+### Storage location
+- UI preferences: `localStorage['basepro.web.ui_preferences']`
+  - includes `mode`, `preset`, `collapseNavByDefault`, `showFooter`
+
+### How to run tests
+- `cd web && npm run test`
+- `cd web && npm run build`
+
+### Verification summary
+- `cd web && npm run test`: PASS
+- `cd web && npm run build`: PASS
+
+### Known follow-ups
+- Vite still emits existing non-blocking third-party warnings (`'use client'` directives, chunk-size warning); unchanged by this milestone.
+
+## Web — Theme/Palette Accessibility + Icon Parity Update Complete
+
+### What changed
+- Updated web settings appearance UX to match desktop patterns more closely:
+  - added accessible `Appearance` dialog picker in [PalettePresetPicker.tsx](/Users/sam/projects/go/basepro/web/src/ui/theme/PalettePresetPicker.tsx)
+  - keyboard-selectable preset tiles (`role="button"`, `tabIndex=0`, Enter/Space handlers)
+  - explicit `aria-label`s on mode selector and preset actions
+  - settings page now offers quick preset buttons + `Browse all presets` entry like desktop.
+- Updated authenticated shell iconography in [AppShell.tsx](/Users/sam/projects/go/basepro/web/src/components/AppShell.tsx):
+  - replaced placeholder glyphs with Material-style drawer/menu/action icons matching desktop conventions.
+- Added shared local icon set in [icons.tsx](/Users/sam/projects/go/basepro/web/src/ui/icons.tsx) so web can use MUI `SvgIcon` components without external package download in this offline environment.
+- Updated route tests for the new accessible controls in [routes.test.tsx](/Users/sam/projects/go/basepro/web/src/routes.test.tsx).
+
+### How to run tests
+- `cd web && npm run test`
+- `cd web && npm run build`
+
+### Verification summary
+- `cd web && npm run test`: PASS
+- `cd web && npm run build`: PASS
+
+### Known follow-ups
+- One non-blocking test console warning appears from MUI Select popover anchor validation in jsdom when opening the theme mode menu.
+- Existing Vite third-party warnings (`'use client'`, chunk-size warning) remain unchanged.

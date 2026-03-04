@@ -4,6 +4,7 @@ export interface UiPreferences {
   mode: UiThemeMode
   preset: string
   collapseNavByDefault: boolean
+  showFooter: boolean
 }
 
 export const UI_PREFERENCES_STORAGE_KEY = 'basepro.web.ui_preferences'
@@ -12,6 +13,7 @@ const DEFAULT_PREFERENCES: UiPreferences = {
   mode: 'system',
   preset: 'oceanic',
   collapseNavByDefault: false,
+  showFooter: true,
 }
 
 function isValidMode(value: unknown): value is UiThemeMode {
@@ -41,6 +43,7 @@ export function loadPrefs(): UiPreferences {
         typeof parsed.collapseNavByDefault === 'boolean'
           ? parsed.collapseNavByDefault
           : DEFAULT_PREFERENCES.collapseNavByDefault,
+      showFooter: typeof parsed.showFooter === 'boolean' ? parsed.showFooter : DEFAULT_PREFERENCES.showFooter,
     }
   } catch {
     return getDefaultPreferences()
@@ -78,6 +81,15 @@ export function setCollapseNavByDefault(collapseNavByDefault: boolean) {
   const next = {
     ...loadPrefs(),
     collapseNavByDefault,
+  }
+  savePrefs(next)
+  return next
+}
+
+export function setShowFooter(showFooter: boolean) {
+  const next = {
+    ...loadPrefs(),
+    showFooter,
   }
   savePrefs(next)
   return next

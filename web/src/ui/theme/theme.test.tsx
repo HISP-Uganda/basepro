@@ -119,7 +119,7 @@ describe('theme system persistence', () => {
   })
 
   it('system mode deterministically follows mocked matchMedia', () => {
-    savePrefs({ mode: 'system', preset: 'oceanic', collapseNavByDefault: false })
+    savePrefs({ mode: 'system', preset: 'oceanic', collapseNavByDefault: false, showFooter: true })
 
     mockMatchMedia(true)
     const firstRender = renderThemeProbe()

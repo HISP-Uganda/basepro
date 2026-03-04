@@ -10,6 +10,26 @@ import { createAppRouter } from './routes'
 import { SnackbarProvider } from './ui/snackbar'
 import { UI_PREFERENCES_STORAGE_KEY } from './ui/preferences'
 
+function mockViewport(isMobile: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => {
+      const isColorSchemeQuery = query === '(prefers-color-scheme: dark)'
+      const isMobileWidthQuery = query.includes('max-width:599.95px')
+      return {
+        matches: isColorSchemeQuery ? false : isMobileWidthQuery ? isMobile : false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }
+    }),
+  })
+}
+
 function renderWithRouter(initialPath: string) {
   const router = createAppRouter([initialPath])
   const queryClient = new QueryClient()
@@ -26,6 +46,7 @@ function renderWithRouter(initialPath: string) {
 beforeEach(() => {
   window.localStorage.clear()
   clearAuthSnapshot()
+  mockViewport(false)
   vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:8080/api/v1')
   vi.stubGlobal('fetch', vi.fn())
 })
@@ -237,17 +258,17 @@ describe('web settings page', () => {
 
     expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Dark' }))
-    fireEvent.click(screen.getByLabelText('Select Forest preset'))
-    fireEvent.click(screen.getByRole('switch', { name: 'Collapse side navigation by default' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Forest' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Start with side navigation collapsed' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Show footer on authenticated pages' }))
 
     const rawPrefs = window.localStorage.getItem(UI_PREFERENCES_STORAGE_KEY)
     expect(rawPrefs).toBeTruthy()
     expect(JSON.parse(rawPrefs ?? '{}')).toEqual(
       expect.objectContaining({
-        mode: 'dark',
         preset: 'forest',
         collapseNavByDefault: true,
+        showFooter: false,
       }),
     )
   })
@@ -257,12 +278,13 @@ describe('web settings page', () => {
     const firstRender = renderWithRouter('/settings')
 
     await screen.findByRole('heading', { name: 'Settings', level: 1 })
-    fireEvent.click(screen.getByRole('radio', { name: 'Light' }))
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Theme mode' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Light' }))
 
     firstRender.unmount()
     renderWithRouter('/settings')
 
-    expect(await screen.findByRole('radio', { name: 'Light' })).toBeChecked()
+    expect(window.localStorage.getItem(UI_PREFERENCES_STORAGE_KEY)).toContain('"mode":"light"')
   })
 
   it('changing preset persists after reload', async () => {
@@ -270,13 +292,13 @@ describe('web settings page', () => {
     const firstRender = renderWithRouter('/settings')
 
     await screen.findByRole('heading', { name: 'Settings', level: 1 })
-    fireEvent.click(screen.getByLabelText('Select Graphite preset'))
+    fireEvent.click(screen.getByRole('button', { name: 'Browse all presets' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Graphite preset' }))
 
     firstRender.unmount()
     renderWithRouter('/settings')
 
-    expect(await screen.findByLabelText('Select Graphite preset')).toBeInTheDocument()
-    expect(screen.getByText('Graphite')).toBeInTheDocument()
+    expect(await screen.findByText('Active preset: Graphite')).toBeInTheDocument()
 
     const rawPrefs = window.localStorage.getItem(UI_PREFERENCES_STORAGE_KEY)
     expect(rawPrefs).toBeTruthy()
@@ -299,5 +321,70 @@ describe('web settings page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save Override' }))
 
     expect(window.localStorage.getItem(API_BASE_URL_OVERRIDE_STORAGE_KEY)).toBe('http://127.0.0.1:8080/api/v1')
+  })
+})
+
+describe('web AppShell layout behavior', () => {
+  function authenticateForAppShell() {
+    setAuthSnapshot({
+      isAuthenticated: true,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      user: {
+        id: 50,
+        username: 'app-shell-user',
+        roles: ['Admin'],
+        permissions: ['settings.read', 'users.read'],
+      },
+    })
+  }
+
+  it('authenticated /dashboard renders AppShell', async () => {
+    authenticateForAppShell()
+    renderWithRouter('/dashboard')
+
+    expect(await screen.findByTestId('app-shell')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
+  })
+
+  it('collapse toggle changes Drawer state and persists after reload', async () => {
+    authenticateForAppShell()
+    const firstRender = renderWithRouter('/dashboard')
+
+    await screen.findByRole('heading', { name: 'Dashboard', level: 1 })
+    expect(screen.getAllByRole('button', { name: 'Collapse navigation' }).length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Collapse navigation' })[0])
+    expect(screen.getAllByRole('button', { name: 'Expand navigation' }).length).toBeGreaterThan(0)
+
+    const rawPrefs = window.localStorage.getItem(UI_PREFERENCES_STORAGE_KEY)
+    expect(rawPrefs).toBeTruthy()
+    expect(JSON.parse(rawPrefs ?? '{}')).toEqual(
+      expect.objectContaining({
+        collapseNavByDefault: true,
+      }),
+    )
+
+    firstRender.unmount()
+    renderWithRouter('/dashboard')
+
+    expect((await screen.findAllByRole('button', { name: 'Expand navigation' })).length).toBeGreaterThan(0)
+  })
+
+  it('mobile drawer opens, closes, and closes on navigation selection', async () => {
+    mockViewport(true)
+    authenticateForAppShell()
+    renderWithRouter('/dashboard')
+
+    await screen.findByRole('heading', { name: 'Dashboard', level: 1 })
+    fireEvent.click(screen.getByRole('button', { name: 'Open navigation menu' }))
+
+    expect(await screen.findByRole('button', { name: 'Close navigation menu' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+
+    expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Close navigation menu' })).not.toBeInTheDocument()
+    })
   })
 })
