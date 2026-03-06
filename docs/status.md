@@ -1,5 +1,19 @@
 # Status
 
+## Next Planned Milestone — Shared Authentication UX + Branding + Password Reset (Planned)
+
+### Planned scope
+- Refresh authentication entry UX for both desktop and web with a polished, reusable login experience.
+- Introduce shared configurable login branding (application display name and optional login image/presentation settings) managed through platform settings.
+- Add shared forgot-password and reset-password flow support with secure token lifecycle expectations.
+- Maintain desktop/web parity for authentication views and behavior against one backend API contract.
+
+### Planned completion evidence
+- Backend tests cover password-reset token security behavior and branding settings API validation.
+- Desktop frontend tests cover login UX states plus forgot/reset route smoke coverage.
+- Web frontend tests cover login UX states plus forgot/reset route smoke coverage.
+- Any temporary parity gap is explicitly documented with follow-up scope.
+
 ## Milestone F — Admin DataGrid Search Contract Standardization (Complete)
 
 ### What changed

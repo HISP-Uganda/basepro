@@ -179,6 +179,12 @@ When adding shared platform capabilities:
 * implement client consumption in desktop and web
 * keep behavior aligned unless a documented temporary gap exists
 
+For shared authentication-entry capabilities:
+
+* keep login, forgot-password, and reset-password views behaviorally aligned across desktop and web
+* keep configurable login branding settings (display name, login image, and related presentation settings) aligned across clients
+* any temporary parity gap for authentication flows must be explicitly documented in `docs/status.md` with follow-up scope
+
 ---
 
 ## 14) Shared Administration UX Patterns

@@ -643,4 +643,88 @@ The scope is platform administration only and must remain domain-agnostic.
 - Backend should apply `q` server-side and preserve backward compatibility for legacy filter-only requests where practical.
 - Desktop and web admin pages should debounce quick search input, compose `q` with pagination/sort/filter, and reset page to 1 when search text changes.
 
+---
+
+## 14. Upcoming Milestone — Shared Authentication UX, Branding, and Password Reset
+
+This milestone defines reusable authentication-entry improvements for the BasePro skeleton and must remain domain-agnostic.
+
+### 14.1 Polished Login Experience
+- Improve login page UX for both desktop and web while keeping a shared interaction model.
+- Login view must provide clear loading, validation, and authentication-failure states.
+- Login copy and layout must remain reusable for future applications built on the skeleton.
+
+### 14.2 Login Form Field Baseline
+- Username/email and password inputs must use a minimum interactive height of `48px`.
+- The minimum height baseline must remain consistent between desktop and web login views.
+- Spacing, error-state visibility, and keyboard submit behavior must be consistent across clients.
+
+### 14.3 Configurable Login Branding
+- Login screen branding must be configurable from platform settings rather than hard-coded in client code.
+- Branding configuration must support at minimum:
+  - application display name
+  - optional login subtitle/tagline
+  - optional login hero/side image reference
+- Branding values must be consumable by both desktop and web clients through the backend contract.
+
+### 14.4 Login-Page App Image Support
+- Login page must support an optional configurable image asset for product/app presentation.
+- Image configuration must support graceful fallback when not configured or unavailable.
+- Image rendering behavior should remain responsive and not block login form usability on small screens.
+
+### 14.5 Configurable Application Display Name
+- Application display name shown on authentication pages must come from shared branding settings.
+- Display name updates must be reflected consistently across desktop and web authentication views.
+- Display name configuration must be reusable across future projects without domain-specific language.
+
+### 14.6 Settings Management for Login Branding
+- Provide settings-page support for managing login branding values through authorized administration UX.
+- Backend must validate branding setting payloads and return typed validation errors for invalid values.
+- Any persisted branding settings must be served by backend APIs and consumed by both desktop and web clients.
+
+### 14.7 Forgot-Password Flow
+- Provide a forgot-password flow initiated from the login view.
+- Flow must accept username/email input and return a non-enumerating response (same outward response regardless of account existence).
+- Delivery mechanism details may remain configurable by deployment (for example email provider integration), but API contract and UX states must be defined in the skeleton.
+
+### 14.8 Reset-Password Flow
+- Provide a reset-password view that accepts reset token plus new password input.
+- Reset flow must include password confirmation and server-side validation feedback.
+- On successful password reset, previous active sessions for that account should be invalidated per backend security policy.
+
+### 14.9 Password Reset Token Security Rules
+- Reset tokens must be cryptographically random, single-use, and time-limited.
+- Store only hashed token values server-side; never persist plaintext reset tokens.
+- Tokens must be invalidated after successful use or when superseded by a newer reset request.
+- Reset endpoints must enforce abuse protections (rate limiting/attempt controls) and must never leak whether an account exists.
+- Logs must not include raw reset tokens, passwords, or other secret material.
+
+### 14.10 Backend/Desktop/Web Parity Expectations
+- Backend authentication contract changes for branding and password reset must be implemented before client consumption.
+- Desktop and web must both implement:
+  - polished login UI updates
+  - shared branding display behavior
+  - forgot-password and reset-password views and error handling
+- Any temporary parity gap must be explicitly documented in `docs/status.md` with owner and follow-up milestone.
+
+### 14.11 Required Tests for Milestone Completion
+- Backend tests must cover:
+  - forgot-password initiation behavior (including non-enumerating response pattern)
+  - reset-password token validation, expiry, single-use enforcement, and invalidation behavior
+  - branding settings validation and retrieval contract
+  - authorization around settings update endpoints
+- Desktop frontend tests must cover:
+  - login UX states (loading, validation, failure)
+  - forgot-password and reset-password route smoke tests
+  - branding rendering on authentication views with fallback behavior
+- Web frontend tests must cover:
+  - login UX states (loading, validation, failure)
+  - forgot-password and reset-password route smoke tests
+  - branding rendering on authentication views with fallback behavior
+- Completion gate remains unchanged:
+  - backend tests passing (`go test ./...`)
+  - desktop frontend route/smoke tests passing
+  - web frontend route/smoke tests passing
+  - `docs/status.md` updated with completion evidence
+
 # END (Authoritative)
