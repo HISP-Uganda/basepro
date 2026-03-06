@@ -2,7 +2,7 @@
 ## Authoritative Requirements Specification
 ## Phase S1 – Skeleton/Foundation
 
-Last Updated: 2026-03-06
+Last Updated: 2026-03-07
 
 ---
 
@@ -798,5 +798,91 @@ The milestone is architecture and documentation first and must remain domain-agn
   - web/frontend route/smoke tests must pass
   - targeted tests should cover registry wiring usage (navigation visibility and permission mapping behavior)
   - `docs/status.md` must record completion evidence and parity notes
+
+---
+
+## 16. Upcoming Milestone — Feature Flags / Module Enablement Contract
+
+This milestone defines a typed, registry-first module enablement model so downstream projects can turn modules on/off without deleting code.
+This milestone is documentation/design first and must not introduce domain modules.
+
+### 16.1 Goals
+- Support phased module rollout in reusable skeleton deployments.
+- Keep enablement predictable across backend, desktop, and web.
+- Prevent scattered ad-hoc feature checks.
+- Keep behavior safe when modules are disabled.
+
+### 16.2 Module Enablement Registry Concept
+- Introduce a typed module-enablement registry/config that complements:
+  - module registry
+  - navigation registry
+  - permission registry
+- Each enablement entry should define at minimum:
+  - module key/id
+  - enabled default
+  - explicit scope
+  - rollout state (`always_on`, `default_on`, `default_off`, `experimental`)
+- Keep registry configuration static and maintainable; do not introduce plugin loading.
+
+### 16.3 Flag Scopes
+Each module flag must declare scope explicitly:
+- `backend` (API/service availability)
+- `desktop` (desktop route/nav/page visibility)
+- `web` (web route/nav/page visibility)
+- `full_stack` (backend + desktop + web)
+
+Flags may also declare behavior intent:
+- navigation visibility
+- route/page access
+- API availability
+- permission exposure
+
+### 16.4 Source of Truth Expectations
+- Source of truth must be explicitly documented and singular per environment.
+- Preferred baseline:
+  - typed static defaults in registry/config
+  - backend computes and serves effective module-enablement config
+  - desktop/web consume backend effective config for runtime gating
+- Local client-only overrides are allowed only for development/testing and must not become production truth.
+- Avoid conflicting sources of truth across clients.
+
+### 16.5 Safe Disable Behavior
+Disabling a module must be safe by default:
+- hide module navigation entries
+- block direct route access in desktop/web
+- block or return typed disabled-module error for backend APIs when applicable
+- prevent normal assignment/exposure of disabled-module permissions unless intentionally retained for compatibility
+- avoid runtime crashes when a disabled module still has code present
+
+Navigation hiding alone is insufficient.
+
+### 16.6 Defaults and Rollout Strategy
+- Every module must declare a documented default enablement state.
+- Rollout states must be explicit and reviewable:
+  - `always_on`: core platform capability
+  - `default_on`: enabled unless explicitly disabled
+  - `default_off`: present but disabled until enabled
+  - `experimental`: disabled by default with explicit opt-in
+- Changing defaults must be recorded in `docs/status.md` with migration/compatibility notes where needed.
+
+### 16.7 Parity Expectations (Backend/Desktop/Web)
+- For shared modules, enablement intent must remain aligned across backend, desktop, and web.
+- If backend disables a module, clients must not present enabled UX that implies availability.
+- Temporary parity gaps are allowed only when documented in `docs/status.md` with follow-up scope/owner.
+
+### 16.8 Required Tests for Enablement Milestones
+- Backend tests:
+  - enabled/disabled API behavior
+  - effective enablement config generation/serving
+  - authorization behavior for disabled modules
+- Desktop and web tests:
+  - navigation visibility for enabled and disabled states
+  - direct-route guard behavior for enabled and disabled states
+  - permission-aware affordance behavior under enablement toggles
+- Milestone completion still requires:
+  - backend tests passing (`go test ./...`)
+  - desktop/frontend route/smoke tests passing
+  - web/frontend route/smoke tests passing
+  - `docs/status.md` updated with parity notes and verification
 
 # END (Authoritative)

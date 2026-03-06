@@ -444,5 +444,104 @@ Prefer:
 
 Do not over-engineer plugin systems unless explicitly required.
 
+---
+
+## 22) Feature Flags / Module Enablement Contract
+
+BasePro must support selectively enabling or disabling modules without deleting code.
+
+This is intended for:
+- downstream projects built from the skeleton
+- phased rollouts
+- deployments where some modules are not yet active
+- hiding incomplete or not-licensed modules safely
+
+### 22.1 Registry-first rule for module enablement
+Module enablement must be configuration-driven, not hardcoded ad hoc in pages or handlers.
+
+When a module can be toggled, review whether it needs entries in:
+- module registry
+- navigation registry
+- permission registry
+- feature-flag / enablement registry
+- settings/config surfaces
+- backend route guards or service guards
+
+Do not scatter unrelated boolean checks across the codebase.
+
+### 22.2 Flag scope must be explicit
+Each flag must declare its intended scope.
+
+Examples:
+- backend-only
+- desktop-only
+- web-only
+- cross-client UI visibility
+- full-stack module enablement
+
+Agents must document whether a flag controls:
+- navigation visibility only
+- route/page visibility
+- API availability
+- permissions exposure
+- settings visibility
+- all of the above
+
+### 22.3 Safe disable behavior
+Disabling a module must fail safely.
+
+At minimum, review:
+- hide navigation entries
+- block direct route/page access
+- prevent actions against disabled backend APIs where applicable
+- avoid exposing disabled-module permissions in normal assignment flows unless intentionally retained for compatibility
+
+Do not rely on hiding navigation alone.
+
+### 22.4 Default behavior
+Flags must have well-defined defaults.
+
+Rules:
+- default values must be documented
+- defaults must be consistent across backend, desktop, and web
+- if a module is marked enabled-by-default, that must be clear in the registry/config
+- disabling a module must not break unrelated modules
+
+### 22.5 Source-of-truth discipline
+The source of truth for feature/module enablement must be documented.
+
+Prefer a predictable approach such as:
+- static defaults in registry/config
+- backend-served effective enablement config for runtime awareness
+- local client overrides only for development/testing if explicitly allowed
+
+Agents must not invent multiple conflicting sources of truth.
+
+### 22.6 Parity rule
+If a flag controls a shared module, agents must maintain parity across:
+- backend behavior
+- desktop visibility/access
+- web visibility/access
+
+Any temporary mismatch must be recorded in `docs/status.md`.
+
+### 22.7 New module rule
+When creating a new module, agents must decide whether the module is:
+- always enabled
+- enabled by default but configurable
+- experimental / disabled by default
+
+That decision must be reflected in the registries and documented.
+
+### 22.8 Testing rule
+Feature/module enablement changes must include tests for:
+- enabled state
+- disabled state
+- navigation behavior
+- route guarding
+- backend guarding if applicable
+
+Do not consider a flag complete without testing both sides of the toggle.
+
 
 ## END

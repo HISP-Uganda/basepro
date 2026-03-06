@@ -1,5 +1,32 @@
 # Status
 
+## Milestone — Feature Flags / Module Enablement Registry (Planned)
+
+### Planned scope
+- Define a typed module-enablement registry/contract that complements existing module, navigation, and permission registries.
+- Define explicit flag scopes:
+  - backend
+  - desktop
+  - web
+  - full-stack
+- Define safe-disable behavior expectations for:
+  - navigation visibility
+  - route/page access
+  - backend API availability/guarding
+  - permission exposure behavior
+
+### Planned architecture targets
+- Backend:
+  - provide a backend-served effective feature/module enablement config contract for runtime consumption.
+- Desktop and web:
+  - consume effective enablement config to guard navigation and direct route access consistently.
+- Cross-layer:
+  - preserve registry-first wiring and avoid ad-hoc feature checks scattered across pages/handlers.
+
+### Planned delivery notes
+- This is documentation/design-first planning; no runtime code implementation is included in this milestone entry.
+- Implementation milestone must include backend + desktop + web test coverage for both enabled and disabled states.
+
 ## Milestone — Registry-First Module Extension Workflow (Documentation) (Complete)
 
 ### What changed
