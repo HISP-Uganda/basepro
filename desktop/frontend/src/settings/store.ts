@@ -12,14 +12,37 @@ import {
   type TablePrefsV1,
   type UiPrefs,
 } from './types'
-import { LoadSettings, ResetSettings, SaveSettings } from '../../wailsjs/go/main/App'
-import { main } from '../../wailsjs/go/models'
 
-const hasWailsBindings = () =>
-  typeof window !== 'undefined' &&
-  typeof window.go !== 'undefined' &&
-  typeof window.go.main !== 'undefined' &&
-  typeof window.go.main.App !== 'undefined'
+interface WailsAppBindings {
+  LoadSettings: () => Promise<unknown>
+  SaveSettings: (patch: unknown) => Promise<unknown>
+  ResetSettings: () => Promise<unknown>
+}
+
+function getWailsBindings(): WailsAppBindings | null {
+  if (typeof window === 'undefined' || typeof window.go === 'undefined') {
+    return null
+  }
+
+  const app = window.go?.main?.App
+  if (!app) {
+    return null
+  }
+
+  if (
+    typeof app.LoadSettings !== 'function' ||
+    typeof app.SaveSettings !== 'function' ||
+    typeof app.ResetSettings !== 'function'
+  ) {
+    return null
+  }
+
+  return {
+    LoadSettings: app.LoadSettings,
+    SaveSettings: app.SaveSettings,
+    ResetSettings: app.ResetSettings,
+  }
+}
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -141,14 +164,35 @@ function normalizeSettings(input: unknown): AppSettings {
 
 export const settingsStore: SettingsStore = {
   async loadSettings() {
-    if (!hasWailsBindings()) {
+    const bindings = getWailsBindings()
+    if (!bindings) {
       return defaultSettings
     }
-    const settings = await LoadSettings()
-    return normalizeSettings(settings)
+    try {
+      const settings = await bindings.LoadSettings()
+      return normalizeSettings(settings)
+    } catch {
+      return defaultSettings
+    }
   },
   async saveSettings(patch: SaveSettingsPatch) {
-    if (!hasWailsBindings()) {
+    const fallback = normalizeSettings({
+      ...defaultSettings,
+      ...patch,
+      uiPrefs: { ...defaultSettings.uiPrefs, ...patch.uiPrefs },
+      tablePrefs: patch.tablePrefs ?? defaultSettings.tablePrefs,
+    })
+
+    const bindings = getWailsBindings()
+    if (!bindings) {
+      return fallback
+    }
+
+    try {
+      const { main } = await import('../../wailsjs/go/models')
+      const settings = await bindings.SaveSettings(new main.SettingsPatch(patch))
+      return normalizeSettings(settings)
+    } catch {
       return normalizeSettings({
         ...defaultSettings,
         ...patch,
@@ -156,14 +200,17 @@ export const settingsStore: SettingsStore = {
         tablePrefs: patch.tablePrefs ?? defaultSettings.tablePrefs,
       })
     }
-    const settings = await SaveSettings(new main.SettingsPatch(patch))
-    return normalizeSettings(settings)
   },
   async resetSettings() {
-    if (!hasWailsBindings()) {
+    const bindings = getWailsBindings()
+    if (!bindings) {
       return defaultSettings
     }
-    const settings = await ResetSettings()
-    return normalizeSettings(settings)
+    try {
+      const settings = await bindings.ResetSettings()
+      return normalizeSettings(settings)
+    } catch {
+      return defaultSettings
+    }
   },
 }

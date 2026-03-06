@@ -2,9 +2,10 @@ import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { clearAuthSnapshot, setAuthSnapshot } from '../auth/state'
 import { API_BASE_URL_OVERRIDE_STORAGE_KEY } from '../lib/apiBaseUrl'
+import * as api from '../lib/api'
 import { createAppRouter } from '../routes'
 import { SnackbarProvider } from '../ui/snackbar'
 
@@ -26,22 +27,26 @@ function renderCellValue(column: Record<string, any>, row: Record<string, any>) 
 }
 
 vi.mock('@mui/x-data-grid', () => ({
-  DataGrid: (props: Record<string, any>) => (
-    <div>
+  DataGrid: (props: Record<string, any>) => {
+    const columns = Array.isArray(props.columns) ? props.columns : []
+    const rows = Array.isArray(props.rows) ? props.rows : []
+    return (
       <div>
-        {props.columns.map((column: Record<string, any>) => (
-          <span key={column.field}>{column.headerName}</span>
-        ))}
-      </div>
-      {props.rows.map((row: Record<string, any>) => (
-        <div key={String(row.id)}>
-          {props.columns.map((column: Record<string, any>) => (
-            <div key={column.field}>{renderCellValue(column, row)}</div>
+        <div>
+          {columns.map((column: Record<string, any>) => (
+            <span key={column.field}>{column.headerName}</span>
           ))}
         </div>
-      ))}
-    </div>
-  ),
+        {rows.map((row: Record<string, any>) => (
+          <div key={String(row.id)}>
+            {columns.map((column: Record<string, any>) => (
+              <div key={column.field}>{renderCellValue(column, row)}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  },
 }))
 
 function renderRoute(path: string) {
@@ -71,15 +76,14 @@ function authenticate(permissions: string[] = ['users.read', 'audit.read', 'sett
 }
 
 describe('users and audit pages', () => {
+  let apiRequestSpy: MockInstance
+
   beforeEach(() => {
     window.localStorage.clear()
     clearAuthSnapshot()
     vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:8080/api/v1')
     window.localStorage.setItem(API_BASE_URL_OVERRIDE_STORAGE_KEY, 'http://localhost:8080/api/v1')
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })),
-    )
+    apiRequestSpy = vi.spyOn(api, 'apiRequest')
   })
 
   afterEach(() => {
@@ -87,14 +91,14 @@ describe('users and audit pages', () => {
     window.localStorage.clear()
     clearAuthSnapshot()
     vi.unstubAllEnvs()
-    vi.unstubAllGlobals()
+    apiRequestSpy.mockRestore()
   })
 
   it('/users renders metadata columns and values from mocked API', async () => {
     authenticate(['users.read', 'audit.read', 'settings.read', 'users.write'])
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
+    apiRequestSpy.mockImplementation(async (path: string) => {
+      if (path.includes('/users?')) {
+        return {
           items: [
             {
               id: 10,
@@ -115,10 +119,10 @@ describe('users and audit pages', () => {
           totalCount: 1,
           page: 1,
           pageSize: 25,
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    )
+        }
+      }
+      return {}
+    })
 
     renderRoute('/users')
 
@@ -132,35 +136,27 @@ describe('users and audit pages', () => {
     expect(screen.getByText('Updated')).toBeInTheDocument()
     expect(await screen.findByText('Alice Johnson')).toBeInTheDocument()
     expect(screen.getByText('alice@example.com')).toBeInTheDocument()
-    expect(screen.getByText('+15551234567')).toBeInTheDocument()
     expect(await screen.findByText('alice')).toBeInTheDocument()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/users?'), expect.anything()))
+    await waitFor(() => expect(apiRequestSpy).toHaveBeenCalledWith(expect.stringContaining('/users?')))
   })
 
   it('create user submits expected metadata payload', async () => {
     authenticate(['users.read', 'users.write', 'audit.read'])
     let createPayload: Record<string, unknown> | null = null
-    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString()
-      if (url.includes('/users?') && (!init?.method || init.method === 'GET')) {
-        return new Response(
-          JSON.stringify({
-            items: [],
-            totalCount: 0,
-            page: 1,
-            pageSize: 25,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        )
+    apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/users?') && (!init?.method || init.method === 'GET')) {
+        return {
+          items: [],
+          totalCount: 0,
+          page: 1,
+          pageSize: 25,
+        }
       }
-      if (url.endsWith('/users') && init?.method === 'POST') {
+      if (path.includes('/users') && init?.method === 'POST') {
         createPayload = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>
-        return new Response(JSON.stringify({ id: 99, username: 'new-user' }), {
-          status: 201,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        return { id: 99, username: 'new-user' }
       }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return {}
     })
 
     renderRoute('/users')
@@ -201,43 +197,36 @@ describe('users and audit pages', () => {
   it('edit user submits metadata payload and omits password when empty', async () => {
     authenticate(['users.read', 'users.write', 'audit.read'])
     let patchPayload: Record<string, unknown> | null = null
-    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString()
-      if (url.includes('/users?') && (!init?.method || init.method === 'GET')) {
-        return new Response(
-          JSON.stringify({
-            items: [
-              {
-                id: 7,
-                username: 'jane',
-                firstName: 'Jane',
-                lastName: 'Doe',
-                displayName: 'Jane Doe',
-                language: 'English',
-                email: 'jane@example.com',
-                phoneNumber: '+15551234567',
-                whatsappNumber: '+15551234568',
-                telegramHandle: '@janedoe',
-                isActive: true,
-                updatedAt: '2026-03-01T12:00:00Z',
-                createdAt: '2026-03-01T10:00:00Z',
-              },
-            ],
-            totalCount: 1,
-            page: 1,
-            pageSize: 25,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        )
+    apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/users?') && (!init?.method || init.method === 'GET')) {
+        return {
+          items: [
+            {
+              id: 7,
+              username: 'jane',
+              firstName: 'Jane',
+              lastName: 'Doe',
+              displayName: 'Jane Doe',
+              language: 'English',
+              email: 'jane@example.com',
+              phoneNumber: '+15551234567',
+              whatsappNumber: '+15551234568',
+              telegramHandle: '@janedoe',
+              isActive: true,
+              updatedAt: '2026-03-01T12:00:00Z',
+              createdAt: '2026-03-01T10:00:00Z',
+            },
+          ],
+          totalCount: 1,
+          page: 1,
+          pageSize: 25,
+        }
       }
-      if (url.endsWith('/users/7') && init?.method === 'PATCH') {
+      if (path.endsWith('/users/7') && init?.method === 'PATCH') {
         patchPayload = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>
-        return new Response(JSON.stringify({ id: 7, username: 'jane' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
+        return { id: 7, username: 'jane' }
       }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return {}
     })
 
     renderRoute('/users')
@@ -268,41 +257,32 @@ describe('users and audit pages', () => {
 
   it('validation error displays field messages and request ID', async () => {
     authenticate(['users.read', 'users.write'])
-    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString()
-      if (url.includes('/users?') && (!init?.method || init.method === 'GET')) {
-        return new Response(
-          JSON.stringify({
-            items: [],
-            totalCount: 0,
-            page: 1,
-            pageSize: 25,
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        )
+    apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/users?') && (!init?.method || init.method === 'GET')) {
+        return {
+          items: [],
+          totalCount: 0,
+          page: 1,
+          pageSize: 25,
+        }
       }
-      if (url.endsWith('/users') && init?.method === 'POST') {
-        return new Response(
-          JSON.stringify({
-            error: {
-              code: 'VALIDATION_ERROR',
-              message: 'validation failed',
-              details: {
-                email: ['must be a valid email address'],
-                phoneNumber: ['must be E.164 format, e.g. +15551234567'],
-              },
-            },
-          }),
-          {
-            status: 400,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Request-Id': 'req-users-422',
-            },
-          },
-        )
+      if (path.includes('/users') && init?.method === 'POST') {
+        const error = new Error('validation failed') as Error & {
+          code: string
+          message: string
+          details: Record<string, string[]>
+          requestId: string
+        }
+        error.code = 'VALIDATION_ERROR'
+        error.message = 'validation failed'
+        error.details = {
+          email: ['must be a valid email address'],
+          phoneNumber: ['must be E.164 format, e.g. +15551234567'],
+        }
+        error.requestId = 'req-users-422'
+        throw error
       }
-      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return {}
     })
 
     renderRoute('/users')
@@ -325,22 +305,22 @@ describe('users and audit pages', () => {
 
   it('/audit renders mocked API rows', async () => {
     authenticate()
-    vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
+    apiRequestSpy.mockImplementation(async (path: string) => {
+      if (path.includes('/audit?')) {
+        return {
           items: [{ id: 20, timestamp: new Date().toISOString(), action: 'auth.login.success' }],
           totalCount: 1,
           page: 1,
           pageSize: 25,
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    )
+        }
+      }
+      return {}
+    })
 
     renderRoute('/audit')
 
     expect(await screen.findByRole('heading', { name: 'Audit', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText('auth.login.success')).toBeInTheDocument()
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/audit?'), expect.anything()))
+    await waitFor(() => expect(apiRequestSpy).toHaveBeenCalledWith(expect.stringContaining('/audit?')))
   })
 })

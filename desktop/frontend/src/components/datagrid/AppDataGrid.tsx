@@ -18,6 +18,7 @@ import { useRouter } from '@tanstack/react-router'
 import type { SettingsStore, TablePrefsV1 } from '../../settings/types'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+const EMPTY_STICKY_RIGHT_FIELDS: string[] = []
 
 const defaultTablePrefs: TablePrefsV1 = {
   version: 1,
@@ -51,6 +52,7 @@ interface AppDataGridProps<R extends GridValidRowModel = GridValidRowModel> {
   getRowId?: (row: R) => string | number
   settingsStore?: SettingsStore
   reloadToken?: number
+  stickyRightFields?: string[]
 }
 
 function moveField(fields: string[], field: string, targetIndex: number | undefined): string[] {
@@ -91,6 +93,59 @@ function applyColumnOrder<R extends GridValidRowModel>(
   return ordered
 }
 
+function withStickyRightFields(pinnedColumns: TablePrefsV1['pinnedColumns'], stickyRightFields: string[]) {
+  if (!stickyRightFields.length) {
+    return pinnedColumns
+  }
+  const stickySet = new Set(stickyRightFields)
+  const left = pinnedColumns.left.filter((field) => !stickySet.has(field))
+  const right = [...pinnedColumns.right.filter((field) => !stickySet.has(field)), ...stickyRightFields]
+  return {
+    left: Array.from(new Set(left)),
+    right: Array.from(new Set(right)),
+  }
+}
+
+function paginationModelsEqual(a: GridPaginationModel, b: GridPaginationModel) {
+  return a.page === b.page && a.pageSize === b.pageSize
+}
+
+function sortModelsEqual(a: GridSortModel, b: GridSortModel) {
+  if (a.length !== b.length) {
+    return false
+  }
+  return a.every((item, index) => item.field === b[index]?.field && item.sort === b[index]?.sort)
+}
+
+function filterModelsEqual(a: GridFilterModel, b: GridFilterModel) {
+  if (a.items.length !== b.items.length) {
+    return false
+  }
+
+  const itemsEqual = a.items.every((item, index) => {
+    const candidate = b.items[index]
+    return (
+      item.field === candidate?.field &&
+      item.operator === candidate?.operator &&
+      String(item.value ?? '') === String(candidate?.value ?? '')
+    )
+  })
+  if (!itemsEqual) {
+    return false
+  }
+
+  if ((a.logicOperator ?? 'or') !== (b.logicOperator ?? 'or')) {
+    return false
+  }
+
+  const aQuick = a.quickFilterValues ?? []
+  const bQuick = b.quickFilterValues ?? []
+  if (aQuick.length !== bQuick.length) {
+    return false
+  }
+  return aQuick.every((value, index) => String(value ?? '') === String(bQuick[index] ?? ''))
+}
+
 export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
   columns,
   fetchData,
@@ -99,7 +154,10 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
   getRowId,
   settingsStore,
   reloadToken,
+  stickyRightFields,
 }: AppDataGridProps<R>) {
+  const stickyFields = stickyRightFields ?? EMPTY_STICKY_RIGHT_FIELDS
+  const stickyFieldsKey = stickyFields.join('\u0000')
   const router = useRouter()
   const store = settingsStore ?? router.options.context.settingsStore
 
@@ -120,6 +178,7 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
   const [pinnedColumns, setPinnedColumns] = React.useState(defaultTablePrefs.pinnedColumns)
   const [hydrated, setHydrated] = React.useState(false)
   const requestIdRef = React.useRef(0)
+  const lastFetchKeyRef = React.useRef('')
 
   React.useEffect(() => {
     let active = true
@@ -137,14 +196,14 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
       setColumnVisibilityModel(persisted.columnVisibility)
       setColumnOrder(persisted.columnOrder)
       setDensity(persisted.density)
-      setPinnedColumns(persisted.pinnedColumns)
+      setPinnedColumns(withStickyRightFields(persisted.pinnedColumns, stickyFields))
       setHydrated(true)
     })
 
     return () => {
       active = false
     }
-  }, [storageKey, store])
+  }, [storageKey, store, stickyFieldsKey])
 
   const persistTablePrefs = React.useCallback(
     async (updater: (current: TablePrefsV1) => TablePrefsV1) => {
@@ -187,6 +246,18 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
     if (!hydrated) {
       return
     }
+    const fetchKey = JSON.stringify({
+      page: paginationModel.page + 1,
+      pageSize: paginationModel.pageSize,
+      sortModel,
+      filterModel,
+      reloadToken: reloadToken ?? null,
+    })
+    if (fetchKey === lastFetchKeyRef.current) {
+      return
+    }
+    lastFetchKeyRef.current = fetchKey
+
     const requestId = ++requestIdRef.current
     setLoading(true)
     void fetchData({
@@ -197,6 +268,9 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
     })
       .then((result) => {
         if (requestId !== requestIdRef.current) {
+          return
+        }
+        if (!Array.isArray(result.rows) || typeof result.total !== 'number') {
           return
         }
         setRows(result.rows)
@@ -223,14 +297,20 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
       pagination
       paginationMode="server"
       paginationModel={paginationModel}
-      onPaginationModelChange={(model: GridPaginationModel) => setPaginationModel(model)}
+      onPaginationModelChange={(model: GridPaginationModel) =>
+        setPaginationModel((current) => (paginationModelsEqual(current, model) ? current : model))
+      }
       pageSizeOptions={PAGE_SIZE_OPTIONS}
       sortingMode="server"
       sortModel={sortModel}
-      onSortModelChange={(model: GridSortModel) => setSortModel(model)}
+      onSortModelChange={(model: GridSortModel) =>
+        setSortModel((current) => (sortModelsEqual(current, model) ? current : model))
+      }
       filterMode="server"
       filterModel={filterModel}
-      onFilterModelChange={(model: GridFilterModel) => setFilterModel(model)}
+      onFilterModelChange={(model: GridFilterModel) =>
+        setFilterModel((current) => (filterModelsEqual(current, model) ? current : model))
+      }
       density={density}
       onDensityChange={(value: GridDensity) => setDensity(value)}
       columnVisibilityModel={columnVisibilityModel}
@@ -268,10 +348,15 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
       }}
       pinnedColumns={pinnedColumns}
       onPinnedColumnsChange={(model: { left?: string[]; right?: string[] }) =>
-        setPinnedColumns({
-          left: model.left ?? [],
-          right: model.right ?? [],
-        })
+        setPinnedColumns(
+          withStickyRightFields(
+            {
+              left: model.left ?? [],
+              right: model.right ?? [],
+            },
+            stickyFields,
+          ),
+        )
       }
     />
   )

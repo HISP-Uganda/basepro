@@ -14,13 +14,11 @@ func AccessLog() gin.HandlerFunc {
 		c.Next()
 
 		duration := time.Since(start)
-		requestID := RequestIDFromContext(c)
 		path := c.FullPath()
 		if path == "" {
 			path = c.Request.URL.Path
 		}
 		logging.ForContext(c.Request.Context()).Info("http_request",
-			slog.String("request_id", requestID),
 			slog.String("method", c.Request.Method),
 			slog.String("path", path),
 			slog.Int("status", c.Writer.Status()),

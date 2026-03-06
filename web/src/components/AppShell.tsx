@@ -1,8 +1,8 @@
 import React from 'react'
 import {
   AppBar,
+  Avatar,
   Box,
-  Button,
   Divider,
   Drawer,
   IconButton,
@@ -10,6 +10,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
   Toolbar,
   Tooltip,
   Typography,
@@ -32,8 +34,10 @@ import {
   GroupRoundedIcon,
   LogoutRoundedArrowIcon,
   MenuIcon,
+  PaletteRoundedIcon,
   SettingsRoundedIcon,
 } from '../ui/icons'
+import { PalettePresetPicker } from '../ui/theme/PalettePresetPicker'
 import { useUiPreferences } from '../ui/theme/UiPreferencesProvider'
 
 const drawerWidth = 260
@@ -73,11 +77,13 @@ interface NavItem {
 
 export function AppShell() {
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const { prefs, setCollapseNavByDefault } = useUiPreferences()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const [collapsed, setCollapsed] = React.useState(prefs.collapseNavByDefault)
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [appearanceOpen, setAppearanceOpen] = React.useState(false)
+  const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null)
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true })
   const firstNavItemRef = React.useRef<HTMLDivElement | null>(null)
@@ -160,6 +166,10 @@ export function AppShell() {
     if (isMobile) {
       setMobileOpen(false)
     }
+  }
+
+  const closeMenus = () => {
+    setMenuAnchor(null)
   }
 
   const drawer = (
@@ -262,9 +272,56 @@ export function AppShell() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }} noWrap>
             {sectionTitle(pathname)}
           </Typography>
-          <Button color="inherit" onClick={() => void logout()} aria-label="Logout" startIcon={<LogoutRoundedArrowIcon />}>
-            Logout
-          </Button>
+          <Typography variant="body2" sx={{ display: { xs: 'none', sm: 'block' }, mr: 1.25, opacity: 0.95 }}>
+            {user?.username ?? 'User'}
+          </Typography>
+          <Tooltip title="Open user menu">
+            <IconButton color="inherit" onClick={(event) => setMenuAnchor(event.currentTarget)} aria-label="Open user menu">
+              <Avatar sx={{ width: 32, height: 32 }}>{(user?.username ?? 'U').slice(0, 1).toUpperCase()}</Avatar>
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={menuAnchor}
+            open={Boolean(menuAnchor)}
+            onClose={closeMenus}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+          >
+            <MenuItem
+              onClick={() => {
+                closeMenus()
+                void navigate({ to: '/settings' })
+              }}
+            >
+              <ListItemIcon>
+                <SettingsRoundedIcon fontSize="small" />
+              </ListItemIcon>
+              Settings
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                closeMenus()
+                setAppearanceOpen(true)
+              }}
+            >
+              <ListItemIcon>
+                <PaletteRoundedIcon fontSize="small" />
+              </ListItemIcon>
+              Appearance
+            </MenuItem>
+            <Divider />
+            <MenuItem
+              onClick={() => {
+                closeMenus()
+                void logout()
+              }}
+            >
+              <ListItemIcon>
+                <LogoutRoundedArrowIcon fontSize="small" />
+              </ListItemIcon>
+              Logout
+            </MenuItem>
+          </Menu>
         </Toolbar>
       </AppBar>
 
@@ -350,6 +407,7 @@ export function AppShell() {
           ) : null}
         </Box>
       </Box>
+      <PalettePresetPicker open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />
     </Box>
   )
 }

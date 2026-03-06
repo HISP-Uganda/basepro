@@ -351,6 +351,19 @@ describe('web AppShell layout behavior', () => {
     expect(screen.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
   })
 
+  it('shows username and desktop-style user menu actions', async () => {
+    authenticateForAppShell()
+    renderWithRouter('/dashboard')
+
+    await screen.findByRole('heading', { name: 'Dashboard', level: 1 })
+    expect(screen.getByText('app-shell-user')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open user menu' }))
+    expect(await screen.findByRole('menuitem', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Appearance' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Logout' })).toBeInTheDocument()
+  })
+
   it('collapse toggle changes Drawer state and persists after reload', async () => {
     authenticateForAppShell()
     const firstRender = renderWithRouter('/dashboard')

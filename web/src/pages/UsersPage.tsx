@@ -306,7 +306,14 @@ export function UsersPage() {
         ) : null}
       </Box>
       <Box sx={{ height: 620, width: '100%' }}>
-        <AppDataGrid columns={columns} fetchData={fetchUsers} storageKey="users-table" reloadToken={reloadToken} />
+        <AppDataGrid
+          columns={columns}
+          fetchData={fetchUsers}
+          storageKey="users-table"
+          reloadToken={reloadToken}
+          enablePinnedColumns
+          stickyRightFields={['actions']}
+        />
       </Box>
 
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} fullWidth maxWidth="sm">

@@ -444,6 +444,7 @@ export function UsersPage() {
           fetchData={fetchUsers}
           storageKey="users-table"
           reloadToken={reloadToken}
+          stickyRightFields={['actions']}
         />
       </Box>
 

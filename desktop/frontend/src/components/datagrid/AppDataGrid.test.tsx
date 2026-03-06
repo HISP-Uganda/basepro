@@ -57,7 +57,7 @@ vi.mock('@mui/x-data-grid', () => {
 function createMockSettingsStore(seed: AppSettings): SettingsStore & {
   saveSettingsMock: ReturnType<typeof vi.fn>
 } {
-  let state = structuredClone(seed)
+  let state = JSON.parse(JSON.stringify(seed)) as AppSettings
 
   const saveSettingsMock = vi.fn(async (patch: SaveSettingsPatch) => {
     state = {
