@@ -425,6 +425,69 @@ func TestValidationErrorsUseStandardizedShapeCode(t *testing.T) {
 	}
 }
 
+func TestCreateUserWithInvalidRoleReturnsValidationError(t *testing.T) {
+	repo := newFakeRepo()
+	rbacService := rbac.NewService(&fakeRBACRepo{rolesByUser: map[int64][]rbac.Role{}})
+	service := NewService(repo, rbacService, audit.NewService(&fakeAuditRepo{}), 4)
+
+	_, err := service.CreateUser(context.Background(), CreateInput{
+		Username: "invalid-role",
+		Password: "Pass123!",
+		IsActive: true,
+		Roles:    []string{"DoesNotExist"},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var appErr *apperror.AppError
+	if !errorsAs(err, &appErr) {
+		t.Fatalf("expected AppError, got %T", err)
+	}
+	if appErr.Code != apperror.CodeValidationFailed {
+		t.Fatalf("expected %s, got %s", apperror.CodeValidationFailed, appErr.Code)
+	}
+	if _, ok := appErr.Details["roles"]; !ok {
+		t.Fatalf("expected roles details")
+	}
+}
+
+func TestUpdateUserWithInvalidRoleReturnsValidationError(t *testing.T) {
+	repo := newFakeRepo()
+	rbacService := rbac.NewService(&fakeRBACRepo{rolesByUser: map[int64][]rbac.Role{}})
+	service := NewService(repo, rbacService, audit.NewService(&fakeAuditRepo{}), 4)
+
+	created, err := service.CreateUser(context.Background(), CreateInput{
+		Username: "existing",
+		Password: "Pass123!",
+		IsActive: true,
+		Roles:    []string{"Viewer"},
+	})
+	if err != nil {
+		t.Fatalf("seed create: %v", err)
+	}
+
+	roles := []string{"UnknownRole"}
+	_, err = service.UpdateUser(context.Background(), UpdateInput{
+		UserID: created.ID,
+		Roles:  &roles,
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var appErr *apperror.AppError
+	if !errorsAs(err, &appErr) {
+		t.Fatalf("expected AppError, got %T", err)
+	}
+	if appErr.Code != apperror.CodeValidationFailed {
+		t.Fatalf("expected %s, got %s", apperror.CodeValidationFailed, appErr.Code)
+	}
+	if _, ok := appErr.Details["roles"]; !ok {
+		t.Fatalf("expected roles details")
+	}
+}
+
 func errorsAs(err error, target **apperror.AppError) bool {
 	if err == nil {
 		return false

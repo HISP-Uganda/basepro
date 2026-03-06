@@ -61,6 +61,7 @@ func JWTAuth(jwtManager *auth.JWTManager) gin.HandlerFunc {
 
 		c.Set(auth.ClaimsContextKey, claims)
 		c.Set(auth.PrincipalContextKey, principal)
+		c.Set("actor_user_id", principal.UserID)
 		c.Next()
 	}
 }
@@ -137,6 +138,7 @@ func ResolveJWTPrincipal(jwtManager *auth.JWTManager) gin.HandlerFunc {
 		}
 		c.Set(auth.ClaimsContextKey, claims)
 		c.Set(auth.PrincipalContextKey, principal)
+		c.Set("actor_user_id", principal.UserID)
 		c.Next()
 	}
 }

@@ -1,5 +1,72 @@
 # Status
 
+## Milestone B — Backend RBAC Administration Contract (Complete)
+
+### What changed
+- Added backend RBAC administration API support under `/api/v1/admin`:
+  - `GET /api/v1/admin/roles`
+  - `POST /api/v1/admin/roles`
+  - `GET /api/v1/admin/roles/:id` (supports `includeUsers=true`)
+  - `PUT/PATCH /api/v1/admin/roles/:id`
+  - `PUT /api/v1/admin/roles/:id/permissions`
+  - `GET /api/v1/admin/permissions`
+- Implemented new RBAC admin service/repository flow (no layering bypass):
+  - role listing with counts
+  - role create/update
+  - role detail with assigned permissions and optional assigned users
+  - permissions listing with pagination, search/query filter, and module scope filter
+  - role-permission replacement flow for assign/remove behavior
+- Extended backend router and app wiring to include RBAC admin handlers with backend authorization middleware.
+- Protected RBAC admin endpoints server-side (frontend checks remain UX-level only).
+- Preserved typed validation error envelope for RBAC admin and role/permission identifier validation.
+- Added RBAC admin audit events:
+  - `roles.create`
+  - `roles.update`
+- Strengthened user role-assignment validation coverage:
+  - invalid role identifiers on user create/update now explicitly covered by tests with typed validation expectations.
+- Saved prompt copy to `docs/prompts/2026-03-06-milestone-b-backend-rbac-admin-contract.md` (gitignored).
+
+### Endpoint contract summary (backend for desktop/web consumers)
+- Roles list:
+  - `GET /api/v1/admin/roles?page=1&pageSize=25&sort=name:asc&filter=name:admin`
+  - Response shape: `{ items, totalCount, page, pageSize }`
+- Role create:
+  - `POST /api/v1/admin/roles`
+  - Request: `{ "name": "RoleName", "permissions": ["users.read"] }`
+  - Response: role detail with `permissions`
+- Role detail:
+  - `GET /api/v1/admin/roles/:id?includeUsers=true`
+  - Response: `{ id, name, createdAt, updatedAt, permissions: [...], users?: [...] }`
+- Role update:
+  - `PATCH /api/v1/admin/roles/:id` (or `PUT`)
+  - Request supports partial: `{ "name": "...", "permissions": [...] }`
+- Role-permissions replace:
+  - `PUT /api/v1/admin/roles/:id/permissions`
+  - Request: `{ "permissions": [...] }`
+- Permissions list:
+  - `GET /api/v1/admin/permissions?page=1&pageSize=25&sort=name:asc&q=users&moduleScope=admin`
+  - Response shape: `{ items, totalCount, page, pageSize }`
+- Validation/auth errors:
+  - Typed envelope preserved: `{ "error": { "code", "message", "details" } }`
+  - Invalid identifiers use `VALIDATION_ERROR` with field details.
+
+### How to test
+- Backend tests:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...`
+- Desktop frontend route/smoke tests:
+  - `cd desktop/frontend && npm test -- --run`
+- Web frontend route/smoke tests:
+  - `cd web && npm test -- --run`
+
+### Verification summary
+- Backend tests: PASS
+- Desktop frontend tests: PASS
+- Web frontend tests: PASS
+
+### Known follow-ups
+- Desktop/web `Roles` and `Permissions` pages are still scaffolded UI shells and should be wired to the new RBAC admin endpoints in the next client milestone.
+- Existing jsdom MUI `anchorEl` warnings in test runs remain non-blocking; tests pass.
+
 ## Milestone A — Shared Administration UX Foundation + Desktop/Web Parity (Complete)
 
 ### What changed

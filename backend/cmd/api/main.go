@@ -99,6 +99,7 @@ func run() error {
 		cfg.Auth.PasswordHashCost,
 	)
 	usersService := users.NewService(users.NewSQLRepository(database), rbacService, auditService, cfg.Auth.PasswordHashCost)
+	rbacAdminService := rbac.NewAdminService(rbac.NewSQLRepository(database), auditService)
 
 	seedRBAC := cfg.Seed.EnableDevBootstrap || flags.seedDevAdmin
 	if seedRBAC {
@@ -149,6 +150,7 @@ func run() error {
 			AuthService:         authService,
 			JWTManager:          jwtManager,
 			RBACService:         rbacService,
+			RBACAdminHandler:    rbac.NewAdminHandler(rbacAdminService),
 			AuditHandler:        audit.NewHandler(auditService),
 			UsersHandler:        users.NewHandler(usersService),
 			APITokenHeaderName:  cfg.Auth.APITokenHeaderName,

@@ -25,6 +25,7 @@ type AppDeps struct {
 	AuthService         *auth.Service
 	JWTManager          *auth.JWTManager
 	RBACService         *rbac.Service
+	RBACAdminHandler    *rbac.AdminHandler
 	AuditHandler        *audit.Handler
 	UsersHandler        *users.Handler
 	APITokenHeaderName  string
@@ -102,6 +103,21 @@ func newRouter(deps AppDeps) *gin.Engine {
 		auditGroup := api.Group("/audit")
 		auditGroup.Use(middleware.ResolveJWTPrincipal(deps.JWTManager), middleware.RequireAuth())
 		auditGroup.GET("", middleware.RequirePermission(deps.RBACService, "audit.read"), deps.AuditHandler.List)
+	}
+
+	if deps.RBACAdminHandler != nil {
+		rolesGroup := api.Group("/admin/roles")
+		rolesGroup.Use(middleware.ResolveJWTPrincipal(deps.JWTManager), middleware.RequireAuth(), middleware.RequireJWTUser())
+		rolesGroup.GET("", middleware.RequirePermission(deps.RBACService, "users.read"), deps.RBACAdminHandler.ListRoles)
+		rolesGroup.POST("", middleware.RequirePermission(deps.RBACService, "users.write"), deps.RBACAdminHandler.CreateRole)
+		rolesGroup.GET("/:id", middleware.RequirePermission(deps.RBACService, "users.read"), deps.RBACAdminHandler.GetRole)
+		rolesGroup.PUT("/:id", middleware.RequirePermission(deps.RBACService, "users.write"), deps.RBACAdminHandler.PutRole)
+		rolesGroup.PATCH("/:id", middleware.RequirePermission(deps.RBACService, "users.write"), deps.RBACAdminHandler.PatchRole)
+		rolesGroup.PUT("/:id/permissions", middleware.RequirePermission(deps.RBACService, "users.write"), deps.RBACAdminHandler.UpdateRolePermissions)
+
+		permissionsGroup := api.Group("/admin/permissions")
+		permissionsGroup.Use(middleware.ResolveJWTPrincipal(deps.JWTManager), middleware.RequireAuth(), middleware.RequireJWTUser())
+		permissionsGroup.GET("", middleware.RequirePermission(deps.RBACService, "users.read"), deps.RBACAdminHandler.ListPermissions)
 	}
 
 	return r
