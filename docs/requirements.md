@@ -539,5 +539,91 @@ Because Wails is **not** a web deployment target, the system must support an opt
 - Web must fully respect standardized error shape:
   ```json
   { "error": { "code": "<CODE>", "message": "<MESSAGE>", "details": {} } }
+  ```
+
+---
+
+## 13. Upcoming Milestone — Shared Administration UX + Parity (Reusable Skeleton)
+
+This milestone defines the next reusable-skeleton step for administration UX and cross-client consistency.
+The scope is platform administration only and must remain domain-agnostic.
+
+### 13.1 Administration Navigation Architecture
+- Navigation must use grouped sections with `Administration` as the primary location for platform management.
+- At minimum, the grouped structure must include:
+  - `Dashboard`
+  - `Administration`:
+    - `Users`
+    - `Roles`
+    - `Permissions`
+    - `Audit Log`
+  - `Settings`
+- Visibility of administration links must respect RBAC permissions.
+- Desktop and web may differ in responsive presentation, but group semantics must remain aligned.
+
+### 13.2 RBAC Administration UI
+- Add reusable administration pages for:
+  - roles management
+  - permissions management
+- Pages must use shared table/list and form patterns already used by users/audit administration.
+- UI checks are convenience only; backend endpoints remain the authorization source of truth.
+
+### 13.3 User Create/Update with Multi-Role Assignment
+- User create/edit flows must support assigning multiple roles in one operation.
+- Role assignments must be validated server-side.
+- Invalid role identifiers must return typed validation errors and be surfaced in the UI.
+- Role assignment behavior must be consistent between desktop and web clients.
+
+### 13.4 Shared Admin Form/Dialog Patterns
+- Administration pages should reuse shared patterns for:
+  - create/edit dialogs (or drawers)
+  - confirmation dialogs for destructive actions
+  - validation error presentation
+- Avoid one-off page patterns when shared components can be extended.
+- Keep all labels and copy generic so the skeleton can be reused across domains.
+
+### 13.5 DataGrid Global UX Standards
+- DataGrid behavior must follow a global baseline:
+  - horizontal and vertical scrolling
+  - server-side pagination/sort/filter where applicable
+  - consistent density and spacing behavior
+  - stable behavior for menus/dialogs in scroll containers
+- Global UI preferences must be able to control DataGrid defaults (for example density, border radius, action-column pinning).
+- Tables may extend defaults, but must not silently ignore global preferences.
+
+### 13.6 Standard Actions Column
+- Administration DataGrids must use a shared actions-column pattern.
+- Actions column should be pinned right when supported; if unsupported, degrade gracefully without breaking usability.
+- Action rendering should be centralized so row actions remain consistent across users, roles, permissions, and audit pages.
+
+### 13.7 Audit Metadata Details UX
+- Audit metadata cells may show a truncated preview in the grid.
+- Full metadata must be viewable in a dedicated details dialog/drawer.
+- Metadata viewer requirements:
+  - pretty-printed JSON
+  - scrollable container
+  - copyable content
+- Large JSON payloads must not be rendered inline in table cells.
+
+### 13.8 Cross-Client Parity Rules
+- Shared administration capabilities must be available in both desktop and web unless an explicit temporary parity gap is recorded in `docs/status.md`.
+- Backend API updates for shared administration features must be consumed by both clients against the same API contract.
+- Any intentional parity gap must include owner, scope, and follow-up milestone target in `docs/status.md`.
+
+### 13.9 Required Tests for Milestone Completion
+- Backend:
+  - role/permission administration API tests
+  - user multi-role assignment validation tests
+  - authorization enforcement tests
+- Desktop and web:
+  - route-level smoke tests for new admin pages
+  - permission-gated navigation tests
+  - DataGrid actions column behavior tests
+  - audit metadata details dialog tests
+- Milestone completion still requires:
+  - backend tests passing (`go test ./...`)
+  - desktop/frontend route tests passing
+  - web/frontend route tests passing
+  - `docs/status.md` updated with completion evidence
 
 # END (Authoritative)

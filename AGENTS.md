@@ -1,4 +1,16 @@
 # AGENTS.md (Major Constraints / Contract)
+# BasePro Agent Guide
+
+BasePro is both:
+
+1. A **reusable application skeleton**
+2. A **foundation for real applications built on top of it**
+
+Agents must recognise when work concerns:
+
+- platform capabilities (skeleton improvements)
+- domain modules (application features)
+
 ## Desktop Skeleton App (Wails + Gin + React/MUI)
 
 This file defines the project contract for automation agents (Codex CLI) and human contributors.
@@ -91,5 +103,209 @@ Do not propose commits when tests are failing.
 - All domain data must go through Gin APIs.
 
 ---
+
+## 11) Platform Skeleton vs Application Projects
+
+This repository is a **reusable platform skeleton** first, and later may become a concrete application.
+
+The skeleton phase focuses on shared platform capabilities:
+
+* authentication
+* RBAC (roles and permissions)
+* audit logging
+* settings management
+* shared application shell
+* backend API contracts
+* desktop/web clients consuming the same backend
+
+During skeleton work:
+
+* prioritize platform features over domain features
+* avoid domain placeholders that are not defined by requirements
+* keep default navigation focused on:
+  * Dashboard
+  * Administration
+  * Settings
+
+When a project intentionally transitions to domain modules:
+
+1. Define domain scope in `docs/requirements.md`.
+2. Update navigation structure intentionally.
+3. Record the transition and scope in `docs/status.md`.
+
+Agents must allow domain expansion when requirements explicitly define it.
+
+---
+
+## 12) Navigation Architecture
+
+Navigation must be grouped and scalable.
+
+Baseline skeleton grouping:
+
+* Dashboard
+* Administration
+  * Users
+  * Roles
+  * Permissions
+  * Audit Log
+* Settings
+
+Applications may add groups (for example `Operations`, `Reporting`, `Finance`) only when defined in requirements.
+
+Rules:
+
+* keep navigation grouped, not flat
+* keep platform/system management under `Administration` by default
+* apply RBAC visibility rules to navigation items
+* desktop and web may differ in responsive layout, but grouping and permission intent must remain consistent
+
+---
+
+## 13) Cross-Client Parity Contract
+
+BasePro has three core layers:
+
+* Gin backend API
+* Wails desktop client
+* React/TypeScript web client
+
+Shared platform capabilities are expected in both desktop and web.
+Temporary parity gaps are allowed only when explicitly documented in `docs/status.md` with follow-up scope.
+
+When adding shared platform capabilities:
+
+* define/update backend API contract first
+* implement client consumption in desktop and web
+* keep behavior aligned unless a documented temporary gap exists
+
+---
+
+## 14) Shared Administration UX Patterns
+
+Administration UX should remain consistent and reusable across clients.
+
+Preferred patterns:
+
+* DataGrid list pages
+* shared actions column behavior
+* confirmation flows for destructive actions
+* dialogs/drawers for detailed views
+* consistent validation display and submission behavior
+
+Prefer extending shared components/utilities for:
+
+* DataGrid wrappers
+* row actions renderers
+* confirmation dialogs
+* metadata/JSON viewers
+* shared form helpers and validation adapters
+
+Avoid one-off patterns unless there is a clear requirement gap.
+
+---
+
+## 15) DataGrid Contract
+
+DataGrid usage must follow a common baseline:
+
+* support horizontal and vertical scrolling
+* keep action columns pinned right where supported
+* degrade gracefully when pinning is unavailable
+* honor global UI preferences when configured (for example density, radius, action pinning)
+* do not silently ignore global preferences at table level
+
+Grid containers must remain scroll-safe and must not clip:
+
+* menus
+* dialogs
+* pinned columns
+* scrollbars
+
+---
+
+## 16) RBAC UI / Backend Coupling
+
+Frontend permission checks are UX-level only.
+Backend authorization is mandatory and authoritative.
+
+Rules:
+
+* enforce permissions server-side for all protected actions
+* use UI permission checks only to hide/disable affordances
+* validate role/permission assignments server-side
+* return typed validation errors for invalid identifiers
+* surface validation errors clearly in clients
+
+---
+
+## 17) Audit UX Rules
+
+Audit metadata can contain structured JSON and may be large.
+
+Rules:
+
+* show compact/truncated metadata previews in tables
+* provide full metadata in a details dialog/drawer
+* metadata viewer must support:
+  * pretty print
+  * scroll
+  * copy
+* avoid rendering full raw JSON directly in grid cells
+
+---
+
+## 18) Extension Rule
+
+When extending the skeleton, prefer additive changes over risky core rewrites.
+
+Prefer:
+
+* adding modules in clear directories
+* extending navigation via shared patterns/configuration
+* adding backend modules without breaking existing API contracts
+
+Treat these as core platform modules:
+
+* authentication
+* RBAC
+* audit logging
+* settings
+* application shell
+
+Changes to core modules should be intentional, minimal, and documented.
+
+---
+
+## 19) Agent Behavior
+
+Agents must:
+
+* read `docs/requirements.md` and `docs/status.md` before milestone work
+* obey milestone sequencing and completion gates
+* preserve backend/desktop/web contract alignment
+* avoid breaking API changes without coordinated client updates
+* keep changes incremental unless requirements demand broader refactor
+* ensure required tests pass before claiming milestone completion
+
+---
+
+## 20) Prompt Scope Discipline
+
+Milestone prompts must explicitly state impacted layers:
+
+* backend
+* desktop
+* web
+* or all three
+
+Prompts should also explicitly require updates to:
+
+* tests
+* `docs/status.md`
+* relevant documentation
+
+Do not replace working behavior with temporary placeholders that reduce parity, quality, or architectural consistency unless requirements explicitly permit it.
+
 
 ## END
