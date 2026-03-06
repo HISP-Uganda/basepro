@@ -19,6 +19,7 @@ import (
 	"basepro/backend/internal/middleware"
 	"basepro/backend/internal/migrate"
 	"basepro/backend/internal/rbac"
+	"basepro/backend/internal/settings"
 	"basepro/backend/internal/users"
 )
 
@@ -100,6 +101,7 @@ func run() error {
 	)
 	usersService := users.NewService(users.NewSQLRepository(database), rbacService, auditService, cfg.Auth.PasswordHashCost)
 	rbacAdminService := rbac.NewAdminService(rbac.NewSQLRepository(database), auditService)
+	settingsService := settings.NewService(settings.NewSQLRepository(database), auditService)
 
 	seedRBAC := cfg.Seed.EnableDevBootstrap || flags.seedDevAdmin
 	if seedRBAC {
@@ -153,6 +155,7 @@ func run() error {
 			RBACAdminHandler:    rbac.NewAdminHandler(rbacAdminService),
 			AuditHandler:        audit.NewHandler(auditService),
 			UsersHandler:        users.NewHandler(usersService),
+			SettingsHandler:     settings.NewHandler(settingsService),
 			APITokenHeaderName:  cfg.Auth.APITokenHeaderName,
 			APITokenAllowBearer: cfg.Auth.APITokenAllowBearer,
 		}),

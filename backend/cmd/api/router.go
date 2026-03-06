@@ -9,6 +9,7 @@ import (
 	"basepro/backend/internal/auth"
 	"basepro/backend/internal/middleware"
 	"basepro/backend/internal/rbac"
+	"basepro/backend/internal/settings"
 	"basepro/backend/internal/users"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -28,6 +29,7 @@ type AppDeps struct {
 	RBACAdminHandler    *rbac.AdminHandler
 	AuditHandler        *audit.Handler
 	UsersHandler        *users.Handler
+	SettingsHandler     *settings.Handler
 	APITokenHeaderName  string
 	APITokenAllowBearer bool
 }
@@ -78,6 +80,8 @@ func newRouter(deps AppDeps) *gin.Engine {
 		authGroup := api.Group("/auth")
 		authGroup.POST("/login", authRateLimiter.Middleware(), deps.AuthHandler.Login)
 		authGroup.POST("/refresh", authRateLimiter.Middleware(), deps.AuthHandler.Refresh)
+		authGroup.POST("/forgot-password", authRateLimiter.Middleware(), deps.AuthHandler.ForgotPassword)
+		authGroup.POST("/reset-password", authRateLimiter.Middleware(), deps.AuthHandler.ResetPassword)
 		authGroup.POST("/logout", deps.AuthHandler.Logout)
 		authGroup.GET("/me", middleware.JWTAuth(deps.JWTManager), middleware.RequireJWTUser(), deps.AuthHandler.Me)
 
@@ -118,6 +122,15 @@ func newRouter(deps AppDeps) *gin.Engine {
 		permissionsGroup := api.Group("/admin/permissions")
 		permissionsGroup.Use(middleware.ResolveJWTPrincipal(deps.JWTManager), middleware.RequireAuth(), middleware.RequireJWTUser())
 		permissionsGroup.GET("", middleware.RequirePermission(deps.RBACService, "users.read"), deps.RBACAdminHandler.ListPermissions)
+	}
+
+	if deps.SettingsHandler != nil {
+		api.GET("/settings/public/login-branding", deps.SettingsHandler.GetPublicLoginBranding)
+
+		settingsGroup := api.Group("/settings")
+		settingsGroup.Use(middleware.ResolveJWTPrincipal(deps.JWTManager), middleware.RequireAuth(), middleware.RequireJWTUser())
+		settingsGroup.GET("/login-branding", middleware.RequirePermission(deps.RBACService, "settings.read"), deps.SettingsHandler.GetLoginBranding)
+		settingsGroup.PUT("/login-branding", middleware.RequirePermission(deps.RBACService, "settings.write"), deps.SettingsHandler.UpdateLoginBranding)
 	}
 
 	return r

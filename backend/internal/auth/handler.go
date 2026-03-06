@@ -37,6 +37,16 @@ type createAPITokenRequest struct {
 	ModuleScope      *string  `json:"moduleScope"`
 }
 
+type forgotPasswordRequest struct {
+	Identifier string `json:"identifier"`
+	ResetURL   string `json:"resetUrl"`
+}
+
+type resetPasswordRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
 func (h *Handler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.Username == "" || req.Password == "" {
@@ -67,6 +77,40 @@ func (h *Handler) Refresh(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req forgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{
+			"body": []string{"invalid JSON payload"},
+		}))
+		return
+	}
+
+	result, err := h.service.RequestPasswordReset(c.Request.Context(), req.Identifier, req.ResetURL, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		apperror.Write(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, result)
+}
+
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req resetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{
+			"body": []string{"invalid JSON payload"},
+		}))
+		return
+	}
+
+	if err := h.service.ResetPasswordWithToken(c.Request.Context(), req.Token, req.Password, c.ClientIP(), c.Request.UserAgent()); err != nil {
+		apperror.Write(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *Handler) Logout(c *gin.Context) {

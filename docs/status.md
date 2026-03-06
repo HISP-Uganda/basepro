@@ -1,18 +1,67 @@
 # Status
 
-## Next Planned Milestone — Shared Authentication UX + Branding + Password Reset (Planned)
+## Milestone G — Backend Authentication Branding + Password Recovery Contract (Complete)
+
+### What changed
+- Added backend persistence for reusable application settings and password-reset token lifecycle:
+  - migration `backend/migrations/000012_create_app_settings_and_password_reset_tokens.up.sql`
+  - new generic `app_settings` table (`category`, `key`, `value_json`) for extensible platform settings
+  - new `password_reset_tokens` table for secure reset token hash storage, expiry, and one-time consumption metadata
+- Added a new backend settings module at `backend/internal/settings` with login-branding contract support:
+  - public branding fetch endpoint for unauthenticated login views
+  - authenticated branding read/update endpoints for settings management
+  - URL/path validation and default fallback behavior when no branding image is configured
+- Extended auth backend contract for forgot/reset flows:
+  - `POST /api/v1/auth/forgot-password` (identifier by username/email, non-leaking accepted response)
+  - `POST /api/v1/auth/reset-password` (token + new password)
+  - secure random reset token generation, hashed token persistence, expiry enforcement, used-token invalidation, and refresh-session invalidation on successful reset
+- Added audit coverage for password reset and branding updates:
+  - `auth.password_reset.requested`
+  - `auth.password_reset.success`
+  - `settings.login_branding.update`
+- Wired routes in `cmd/api/router.go` and service setup in `cmd/api/main.go` for backend-first consumption by both desktop and web clients.
+- Saved prompt copy to `docs/prompts/2026-03-06-milestone-g-backend-auth-branding-password-reset.md` (gitignored).
+
+### Backend contract summary
+- Branding endpoints:
+  - `GET /api/v1/settings/public/login-branding` (no auth; login page consumption)
+  - `GET /api/v1/settings/login-branding` (`settings.read`)
+  - `PUT /api/v1/settings/login-branding` (`settings.write`)
+- Branding payload:
+  - `applicationDisplayName` (required on update)
+  - `loginImageUrl` (optional absolute `http(s)` URL)
+  - `loginImageAssetPath` (optional path/reference for media-managed projects)
+  - `imageConfigured` (boolean for graceful client fallback)
+- Password recovery endpoints:
+  - `POST /api/v1/auth/forgot-password` body: `{ "identifier": "<username-or-email>", "resetUrl": "https://.../reset-password" }`
+    - response: `202 Accepted`, `{ "status": "accepted" }`
+    - does not reveal account existence
+  - `POST /api/v1/auth/reset-password` body: `{ "token": "<token>", "password": "<newPassword>" }`
+    - response: `200 OK`, `{ "status": "ok" }`
+    - validates token existence/expiry/one-time-use and rotates password securely.
+
+### Tests and verification
+- Backend targeted tests:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./internal/auth ./internal/settings ./cmd/api ./internal/middleware` -> PASS
+- Backend full test suite:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...` -> PASS
+- Desktop frontend route/smoke tests:
+  - `cd desktop/frontend && npm test -- --run` -> PASS
+- Web frontend route/smoke tests:
+  - `cd web && npm test -- --run` -> PASS
+
+### Known follow-ups
+- Desktop and web login/forgot/reset views still need milestone implementation to consume the new backend contract end-to-end in UI flows.
+- Email delivery integration for password reset notifications is intentionally left as pluggable service wiring (backend contract is prepared).
+- Existing non-blocking MUI `anchorEl` warnings remain in frontend test output; tests pass.
+
+## Next Planned Milestone — Desktop/Web Authentication UX Consumption Parity (Planned)
 
 ### Planned scope
-- Refresh authentication entry UX for both desktop and web with a polished, reusable login experience.
-- Introduce shared configurable login branding (application display name and optional login image/presentation settings) managed through platform settings.
-- Add shared forgot-password and reset-password flow support with secure token lifecycle expectations.
-- Maintain desktop/web parity for authentication views and behavior against one backend API contract.
-
-### Planned completion evidence
-- Backend tests cover password-reset token security behavior and branding settings API validation.
-- Desktop frontend tests cover login UX states plus forgot/reset route smoke coverage.
-- Web frontend tests cover login UX states plus forgot/reset route smoke coverage.
-- Any temporary parity gap is explicitly documented with follow-up scope.
+- Implement desktop and web login branding consumption from `GET /api/v1/settings/public/login-branding`.
+- Implement desktop and web forgot-password/reset-password views wired to the new backend auth endpoints.
+- Preserve parity in auth-entry behavior, loading/error states, and routing between desktop and web clients.
+- Add route/smoke and behavior tests for desktop/web auth recovery flows.
 
 ## Milestone F — Admin DataGrid Search Contract Standardization (Complete)
 

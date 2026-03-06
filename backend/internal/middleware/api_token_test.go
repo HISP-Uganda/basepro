@@ -30,6 +30,9 @@ func (r *tokenRepo) GetUserByUsername(context.Context, string) (*auth.User, erro
 func (r *tokenRepo) GetUserByID(context.Context, int64) (*auth.User, error) {
 	return nil, auth.ErrNotFound
 }
+func (r *tokenRepo) GetActiveUserByIdentifier(context.Context, string) (*auth.User, error) {
+	return nil, auth.ErrNotFound
+}
 func (r *tokenRepo) GetRefreshTokenByHash(context.Context, string) (*auth.RefreshToken, error) {
 	return nil, auth.ErrNotFound
 }
@@ -41,6 +44,21 @@ func (r *tokenRepo) RevokeAllActiveRefreshTokensForUser(context.Context, int64, 
 	return nil
 }
 func (r *tokenRepo) UpdateUserLastLoginAt(context.Context, int64, time.Time) error { return nil }
+func (r *tokenRepo) CreatePasswordResetToken(context.Context, auth.PasswordResetToken) (*auth.PasswordResetToken, error) {
+	return nil, auth.ErrNotFound
+}
+func (r *tokenRepo) GetPasswordResetTokenByHash(context.Context, string) (*auth.PasswordResetToken, error) {
+	return nil, auth.ErrNotFound
+}
+func (r *tokenRepo) InvalidateActivePasswordResetTokensForUser(context.Context, int64, time.Time) error {
+	return nil
+}
+func (r *tokenRepo) MarkPasswordResetTokenUsed(context.Context, int64, time.Time, *string, *string) error {
+	return auth.ErrNotFound
+}
+func (r *tokenRepo) UpdateUserPasswordHash(context.Context, int64, string, time.Time) error {
+	return auth.ErrNotFound
+}
 func (r *tokenRepo) CreateAPIToken(context.Context, auth.APIToken, []string, *string) (*auth.APIToken, error) {
 	return nil, auth.ErrNotFound
 }

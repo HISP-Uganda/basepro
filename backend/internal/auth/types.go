@@ -27,6 +27,20 @@ type RefreshToken struct {
 	UpdatedAt         time.Time  `db:"updated_at"`
 }
 
+type PasswordResetToken struct {
+	ID                 int64      `db:"id"`
+	UserID             int64      `db:"user_id"`
+	TokenHash          string     `db:"token_hash"`
+	ExpiresAt          time.Time  `db:"expires_at"`
+	UsedAt             *time.Time `db:"used_at"`
+	RequestedFromIP    *string    `db:"requested_from_ip"`
+	RequestedUserAgent *string    `db:"requested_user_agent"`
+	ConsumedFromIP     *string    `db:"consumed_from_ip"`
+	ConsumedUserAgent  *string    `db:"consumed_user_agent"`
+	CreatedAt          time.Time  `db:"created_at"`
+	UpdatedAt          time.Time  `db:"updated_at"`
+}
+
 type APIToken struct {
 	ID              int64      `db:"id"`
 	Name            string     `db:"name"`
@@ -66,6 +80,10 @@ type APITokenCreateResult struct {
 	Token       string     `json:"token"`
 	ExpiresAt   *time.Time `json:"expiresAt"`
 	Permissions []string   `json:"permissions"`
+}
+
+type PasswordResetRequestResult struct {
+	Status string `json:"status"`
 }
 
 type AuthResponse struct {

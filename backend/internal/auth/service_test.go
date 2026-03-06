@@ -21,19 +21,26 @@ type fakeRepo struct {
 	apiTokensByHash map[string]*APIToken
 	apiTokenPerms   map[int64][]APITokenPermission
 	nextAPITokenID  int64
+
+	passwordResetTokensByHash map[string]*PasswordResetToken
+	passwordResetTokensByID   map[int64]*PasswordResetToken
+	nextPasswordResetTokenID  int64
 }
 
 func newFakeRepo(user *User) *fakeRepo {
 	r := &fakeRepo{
-		usersByID:       map[int64]*User{},
-		usersByUsername: map[string]*User{},
-		tokensByHash:    map[string]*RefreshToken{},
-		tokensByID:      map[int64]*RefreshToken{},
-		nextTokenID:     1,
-		apiTokensByID:   map[int64]*APIToken{},
-		apiTokensByHash: map[string]*APIToken{},
-		apiTokenPerms:   map[int64][]APITokenPermission{},
-		nextAPITokenID:  1,
+		usersByID:                 map[int64]*User{},
+		usersByUsername:           map[string]*User{},
+		tokensByHash:              map[string]*RefreshToken{},
+		tokensByID:                map[int64]*RefreshToken{},
+		nextTokenID:               1,
+		apiTokensByID:             map[int64]*APIToken{},
+		apiTokensByHash:           map[string]*APIToken{},
+		apiTokenPerms:             map[int64][]APITokenPermission{},
+		nextAPITokenID:            1,
+		passwordResetTokensByHash: map[string]*PasswordResetToken{},
+		passwordResetTokensByID:   map[int64]*PasswordResetToken{},
+		nextPasswordResetTokenID:  1,
 	}
 	if user != nil {
 		r.usersByID[user.ID] = user
@@ -56,6 +63,18 @@ func (r *fakeRepo) GetUserByID(_ context.Context, userID int64) (*User, error) {
 		return nil, ErrNotFound
 	}
 	return user, nil
+}
+
+func (r *fakeRepo) GetActiveUserByIdentifier(_ context.Context, identifier string) (*User, error) {
+	for _, user := range r.usersByID {
+		if !user.IsActive {
+			continue
+		}
+		if user.Username == identifier {
+			return user, nil
+		}
+	}
+	return nil, ErrNotFound
 }
 
 func (r *fakeRepo) GetRefreshTokenByHash(_ context.Context, hash string) (*RefreshToken, error) {
@@ -108,6 +127,57 @@ func (r *fakeRepo) UpdateUserLastLoginAt(_ context.Context, userID int64, at tim
 	}
 	value := at
 	user.LastLoginAt = &value
+	return nil
+}
+
+func (r *fakeRepo) CreatePasswordResetToken(_ context.Context, token PasswordResetToken) (*PasswordResetToken, error) {
+	token.ID = r.nextPasswordResetTokenID
+	r.nextPasswordResetTokenID++
+	copy := token
+	r.passwordResetTokensByHash[token.TokenHash] = &copy
+	r.passwordResetTokensByID[token.ID] = &copy
+	return &copy, nil
+}
+
+func (r *fakeRepo) GetPasswordResetTokenByHash(_ context.Context, hash string) (*PasswordResetToken, error) {
+	token, ok := r.passwordResetTokensByHash[hash]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	copy := *token
+	return &copy, nil
+}
+
+func (r *fakeRepo) InvalidateActivePasswordResetTokensForUser(_ context.Context, userID int64, now time.Time) error {
+	for _, token := range r.passwordResetTokensByID {
+		if token.UserID == userID && token.UsedAt == nil && token.ExpiresAt.After(now) {
+			t := now
+			token.UsedAt = &t
+			token.UpdatedAt = now
+		}
+	}
+	return nil
+}
+
+func (r *fakeRepo) MarkPasswordResetTokenUsed(_ context.Context, tokenID int64, now time.Time, consumedFromIP, consumedUserAgent *string) error {
+	token, ok := r.passwordResetTokensByID[tokenID]
+	if !ok || token.UsedAt != nil {
+		return ErrNotFound
+	}
+	t := now
+	token.UsedAt = &t
+	token.ConsumedFromIP = consumedFromIP
+	token.ConsumedUserAgent = consumedUserAgent
+	token.UpdatedAt = now
+	return nil
+}
+
+func (r *fakeRepo) UpdateUserPasswordHash(_ context.Context, userID int64, passwordHash string, _ time.Time) error {
+	user, ok := r.usersByID[userID]
+	if !ok {
+		return ErrNotFound
+	}
+	user.PasswordHash = passwordHash
 	return nil
 }
 
@@ -403,6 +473,113 @@ func TestCreateAPITokenStoresHashAndPrefix(t *testing.T) {
 	perms, _ := repo.GetAPITokenPermissions(context.Background(), result.ID)
 	if len(perms) != 1 || perms[0].Permission != "audit.read" {
 		t.Fatalf("expected stored permission audit.read, got %+v", perms)
+	}
+}
+
+func TestForgotPasswordRequestDoesNotLeakUnknownAccount(t *testing.T) {
+	repo := newFakeRepo(&User{ID: 1, Username: "admin", IsActive: true})
+	service := newTestService(repo, &fakeAuditRepo{})
+
+	result, err := service.RequestPasswordReset(context.Background(), "missing-user", "", "127.0.0.1", "agent")
+	if err != nil {
+		t.Fatalf("forgot password request: %v", err)
+	}
+	if result.Status != "accepted" {
+		t.Fatalf("expected accepted status, got %q", result.Status)
+	}
+	if len(repo.passwordResetTokensByID) != 0 {
+		t.Fatal("expected no token generated for unknown user")
+	}
+}
+
+func TestForgotPasswordAndResetPasswordSuccess(t *testing.T) {
+	passwordHash, err := HashPassword("old-secret", 4)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	repo := newFakeRepo(&User{ID: 7, Username: "alice", PasswordHash: passwordHash, IsActive: true})
+	service := newTestService(repo, &fakeAuditRepo{})
+	service.passwordResetTTL = time.Hour
+
+	result, err := service.RequestPasswordReset(context.Background(), "alice", "https://example.com/reset-password", "127.0.0.1", "agent")
+	if err != nil {
+		t.Fatalf("request reset: %v", err)
+	}
+	if result.Status != "accepted" {
+		t.Fatalf("expected accepted status, got %q", result.Status)
+	}
+	if len(repo.passwordResetTokensByID) != 1 {
+		t.Fatalf("expected one reset token, got %d", len(repo.passwordResetTokensByID))
+	}
+
+	var stored *PasswordResetToken
+	for _, token := range repo.passwordResetTokensByID {
+		stored = token
+	}
+	if stored == nil {
+		t.Fatal("expected stored token")
+	}
+
+	plaintext := "plain-reset-token"
+	hash := HashToken(plaintext)
+	stored.TokenHash = hash
+	repo.passwordResetTokensByHash = map[string]*PasswordResetToken{hash: stored}
+
+	if err := service.ResetPasswordWithToken(context.Background(), plaintext, "new-secret", "127.0.0.1", "agent"); err != nil {
+		t.Fatalf("reset password: %v", err)
+	}
+
+	if ComparePassword(repo.usersByID[7].PasswordHash, "new-secret") != nil {
+		t.Fatal("expected password hash to update")
+	}
+	if stored.UsedAt == nil {
+		t.Fatal("expected token marked used")
+	}
+}
+
+func TestResetPasswordRejectsExpiredOrUsedToken(t *testing.T) {
+	repo := newFakeRepo(&User{ID: 8, Username: "bob", PasswordHash: "x", IsActive: true})
+	service := newTestService(repo, &fakeAuditRepo{})
+	now := time.Now().UTC()
+	service.now = func() time.Time { return now }
+
+	expiredPlain := "expired-token"
+	expiredHash := HashToken(expiredPlain)
+	expired := &PasswordResetToken{
+		ID:        1,
+		UserID:    8,
+		TokenHash: expiredHash,
+		ExpiresAt: now.Add(-time.Minute),
+		CreatedAt: now.Add(-2 * time.Minute),
+		UpdatedAt: now.Add(-2 * time.Minute),
+	}
+	repo.passwordResetTokensByID[1] = expired
+	repo.passwordResetTokensByHash[expiredHash] = expired
+
+	if err := service.ResetPasswordWithToken(context.Background(), expiredPlain, "new-secret", "127.0.0.1", "agent"); err == nil {
+		t.Fatal("expected expired token to fail")
+	}
+	if expired.UsedAt == nil {
+		t.Fatal("expected expired token to be invalidated")
+	}
+
+	usedPlain := "used-token"
+	usedHash := HashToken(usedPlain)
+	usedAt := now.Add(-time.Second)
+	used := &PasswordResetToken{
+		ID:        2,
+		UserID:    8,
+		TokenHash: usedHash,
+		ExpiresAt: now.Add(time.Hour),
+		UsedAt:    &usedAt,
+		CreatedAt: now.Add(-2 * time.Minute),
+		UpdatedAt: now.Add(-time.Second),
+	}
+	repo.passwordResetTokensByID[2] = used
+	repo.passwordResetTokensByHash[usedHash] = used
+
+	if err := service.ResetPasswordWithToken(context.Background(), usedPlain, "new-secret", "127.0.0.1", "agent"); err == nil {
+		t.Fatal("expected used token to fail")
 	}
 }
 

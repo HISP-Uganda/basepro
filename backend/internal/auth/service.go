@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,23 @@ type Service struct {
 	apiTokenSecret   string
 	apiTokenEnabled  bool
 	passwordHashCost int
+	passwordResetTTL time.Duration
+	resetNotifier    PasswordResetNotifier
 	now              func() time.Time
+}
+
+type PasswordResetNotification struct {
+	UserID             int64
+	Username           string
+	ResetToken         string
+	ResetURL           *string
+	ExpiresAt          time.Time
+	RequestedFromIP    string
+	RequestedUserAgent string
+}
+
+type PasswordResetNotifier interface {
+	SendPasswordReset(ctx context.Context, notification PasswordResetNotification) error
 }
 
 func NewService(
@@ -47,8 +64,189 @@ func NewService(
 		apiTokenSecret:   apiTokenSecret,
 		apiTokenEnabled:  apiTokenEnabled,
 		passwordHashCost: passwordHashCost,
+		passwordResetTTL: 30 * time.Minute,
 		now:              func() time.Time { return time.Now().UTC() },
 	}
+}
+
+func (s *Service) SetPasswordResetNotifier(notifier PasswordResetNotifier) {
+	s.resetNotifier = notifier
+}
+
+func (s *Service) RequestPasswordReset(ctx context.Context, identifier, resetURLBase, ip, userAgent string) (PasswordResetRequestResult, error) {
+	normalizedIdentifier := strings.TrimSpace(identifier)
+	if normalizedIdentifier == "" {
+		return PasswordResetRequestResult{}, apperror.ValidationWithDetails("validation failed", map[string]any{
+			"identifier": []string{"is required"},
+		})
+	}
+
+	var preparedResetURL *string
+	if strings.TrimSpace(resetURLBase) != "" {
+		u, err := url.Parse(strings.TrimSpace(resetURLBase))
+		if err != nil || !u.IsAbs() || (u.Scheme != "http" && u.Scheme != "https") {
+			return PasswordResetRequestResult{}, apperror.ValidationWithDetails("validation failed", map[string]any{
+				"resetUrl": []string{"must be an absolute http(s) URL"},
+			})
+		}
+		prepared := u.String()
+		preparedResetURL = &prepared
+	}
+
+	user, err := s.repo.GetActiveUserByIdentifier(ctx, normalizedIdentifier)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			s.logAudit(ctx, audit.Event{
+				Action:     "auth.password_reset.requested",
+				EntityType: "auth",
+				Metadata: map[string]any{
+					"identifier": normalizedIdentifier,
+					"result":     "accepted",
+					"ip":         ip,
+					"user_agent": userAgent,
+				},
+			})
+			return PasswordResetRequestResult{Status: "accepted"}, nil
+		}
+		return PasswordResetRequestResult{}, err
+	}
+
+	now := s.now()
+	if err := s.repo.InvalidateActivePasswordResetTokensForUser(ctx, user.ID, now); err != nil {
+		return PasswordResetRequestResult{}, err
+	}
+
+	plainToken, err := GeneratePasswordResetToken()
+	if err != nil {
+		return PasswordResetRequestResult{}, err
+	}
+
+	tokenRecord, err := s.repo.CreatePasswordResetToken(ctx, PasswordResetToken{
+		UserID:             user.ID,
+		TokenHash:          HashToken(plainToken),
+		ExpiresAt:          now.Add(s.passwordResetTTL),
+		RequestedFromIP:    optionalString(ip),
+		RequestedUserAgent: optionalString(userAgent),
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	})
+	if err != nil {
+		return PasswordResetRequestResult{}, err
+	}
+
+	var finalURL *string
+	if preparedResetURL != nil {
+		parsed, _ := url.Parse(*preparedResetURL)
+		query := parsed.Query()
+		query.Set("token", plainToken)
+		parsed.RawQuery = query.Encode()
+		urlValue := parsed.String()
+		finalURL = &urlValue
+	}
+
+	if s.resetNotifier != nil {
+		_ = s.resetNotifier.SendPasswordReset(ctx, PasswordResetNotification{
+			UserID:             user.ID,
+			Username:           user.Username,
+			ResetToken:         plainToken,
+			ResetURL:           finalURL,
+			ExpiresAt:          tokenRecord.ExpiresAt,
+			RequestedFromIP:    ip,
+			RequestedUserAgent: userAgent,
+		})
+	}
+
+	s.logAudit(ctx, audit.Event{
+		Action:      "auth.password_reset.requested",
+		ActorUserID: &user.ID,
+		EntityType:  "auth",
+		EntityID:    strPtr(user.Username),
+		Metadata: map[string]any{
+			"result":       "accepted",
+			"expires_at":   tokenRecord.ExpiresAt.Format(time.RFC3339),
+			"ip":           ip,
+			"user_agent":   userAgent,
+			"delivery":     "pending",
+			"has_reset":    finalURL != nil,
+			"identifier":   normalizedIdentifier,
+			"token_stored": true,
+		},
+	})
+
+	return PasswordResetRequestResult{Status: "accepted"}, nil
+}
+
+func (s *Service) ResetPasswordWithToken(ctx context.Context, token, newPassword, ip, userAgent string) error {
+	normalizedToken := strings.TrimSpace(token)
+	if normalizedToken == "" {
+		return apperror.ValidationWithDetails("validation failed", map[string]any{
+			"token": []string{"is required"},
+		})
+	}
+	if strings.TrimSpace(newPassword) == "" {
+		return apperror.ValidationWithDetails("validation failed", map[string]any{
+			"password": []string{"is required"},
+		})
+	}
+	if len(newPassword) > 256 {
+		return apperror.ValidationWithDetails("validation failed", map[string]any{
+			"password": []string{"must be 256 characters or fewer"},
+		})
+	}
+
+	now := s.now()
+	resetToken, err := s.repo.GetPasswordResetTokenByHash(ctx, HashToken(normalizedToken))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return apperror.ValidationWithDetails("validation failed", map[string]any{
+				"token": []string{"is invalid, expired, or already used"},
+			})
+		}
+		return err
+	}
+	if resetToken.UsedAt != nil {
+		return apperror.ValidationWithDetails("validation failed", map[string]any{
+			"token": []string{"is invalid, expired, or already used"},
+		})
+	}
+	if now.After(resetToken.ExpiresAt) {
+		_ = s.repo.MarkPasswordResetTokenUsed(ctx, resetToken.ID, now, optionalString(ip), optionalString(userAgent))
+		return apperror.ValidationWithDetails("validation failed", map[string]any{
+			"token": []string{"is invalid, expired, or already used"},
+		})
+	}
+
+	passwordHash, err := HashPassword(newPassword, s.passwordHashCost)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.MarkPasswordResetTokenUsed(ctx, resetToken.ID, now, optionalString(ip), optionalString(userAgent)); err != nil {
+		return apperror.ValidationWithDetails("validation failed", map[string]any{
+			"token": []string{"is invalid, expired, or already used"},
+		})
+	}
+	if err := s.repo.UpdateUserPasswordHash(ctx, resetToken.UserID, passwordHash, now); err != nil {
+		return err
+	}
+	if err := s.repo.RevokeAllActiveRefreshTokensForUser(ctx, resetToken.UserID, now); err != nil {
+		return err
+	}
+	if err := s.repo.InvalidateActivePasswordResetTokensForUser(ctx, resetToken.UserID, now); err != nil {
+		return err
+	}
+
+	s.logAudit(ctx, audit.Event{
+		Action:      "auth.password_reset.success",
+		ActorUserID: &resetToken.UserID,
+		EntityType:  "auth",
+		EntityID:    strPtr(strconv.FormatInt(resetToken.UserID, 10)),
+		Metadata: map[string]any{
+			"ip":         ip,
+			"user_agent": userAgent,
+		},
+	})
+	return nil
 }
 
 func (s *Service) Login(ctx context.Context, username, password, ip, userAgent string) (AuthResponse, error) {
@@ -427,4 +625,12 @@ func (s *Service) logAudit(ctx context.Context, event audit.Event) {
 
 func strPtr(value string) *string {
 	return &value
+}
+
+func optionalString(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
