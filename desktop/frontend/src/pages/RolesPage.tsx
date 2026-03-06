@@ -20,7 +20,7 @@ import { useSessionPrincipal } from '../auth/hooks'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
-import { notify } from '../notifications/store'
+import { notify } from '../notifications/facade'
 
 interface RoleRow {
   id: number
@@ -111,7 +111,7 @@ export function RolesPage() {
       setPermissionOptions(Array.isArray(payload.items) ? payload.items : [])
     } catch (error) {
       setPermissionOptions([])
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to load permissions.') })
+      notify.error(toErrorMessage(error, 'Unable to load permissions.'))
     } finally {
       setLoadingPermissions(false)
     }
@@ -147,13 +147,13 @@ export function RolesPage() {
           permissions: createPermissions.map((permission) => permission.name),
         }),
       })
-      notify({ severity: 'success', message: 'Role created.' })
+      notify.success('Role created.')
       setCreateOpen(false)
       setCreateName('')
       setCreatePermissions([])
       refreshGrid()
     } catch (error) {
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to create role.') })
+      notify.error(toErrorMessage(error, 'Unable to create role.'))
     } finally {
       setSubmitting(false)
     }
@@ -168,7 +168,7 @@ export function RolesPage() {
         setEditPermissions(detail.permissions)
         setEditOpen(true)
       } catch (error) {
-        notify({ severity: 'error', message: toErrorMessage(error, 'Unable to load role details.') })
+        notify.error(toErrorMessage(error, 'Unable to load role details.'))
       }
     },
     [loadRoleDetail],
@@ -187,14 +187,14 @@ export function RolesPage() {
           permissions: editPermissions.map((permission) => permission.name),
         }),
       })
-      notify({ severity: 'success', message: 'Role updated.' })
+      notify.success('Role updated.')
       setEditOpen(false)
       setEditRoleId(null)
       setEditName('')
       setEditPermissions([])
       refreshGrid()
     } catch (error) {
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to update role.') })
+      notify.error(toErrorMessage(error, 'Unable to update role.'))
     } finally {
       setSubmitting(false)
     }
@@ -207,7 +207,7 @@ export function RolesPage() {
         setDetails(detail)
         setDetailsOpen(true)
       } catch (error) {
-        notify({ severity: 'error', message: toErrorMessage(error, 'Unable to load role details.') })
+        notify.error(toErrorMessage(error, 'Unable to load role details.'))
       }
     },
     [loadRoleDetail],

@@ -22,7 +22,7 @@ import { useSessionPrincipal } from '../auth/hooks'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
-import { notify } from '../notifications/store'
+import { notify } from '../notifications/facade'
 
 interface UserRow {
   id: number
@@ -254,7 +254,7 @@ export function UsersPage() {
           roles: createRoles,
         }),
       })
-      notify({ severity: 'success', message: 'User created.' })
+      notify.success('User created.')
       setCreateOpen(false)
       setCreateForm(defaultCreateForm)
       setCreateRoles([])
@@ -264,7 +264,7 @@ export function UsersPage() {
       if (Object.values(fieldErrors).some((message) => Boolean(message))) {
         setCreateErrors(fieldErrors)
       }
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to create user.') })
+      notify.error(toErrorMessage(error, 'Unable to create user.'))
     } finally {
       setSubmitting(false)
     }
@@ -300,7 +300,7 @@ export function UsersPage() {
         method: 'PATCH',
         body: JSON.stringify(payload),
       })
-      notify({ severity: 'success', message: 'User updated.' })
+      notify.success('User updated.')
       setEditOpen(false)
       setEditUser(null)
       setEditForm(defaultCreateForm)
@@ -311,7 +311,7 @@ export function UsersPage() {
       if (Object.values(fieldErrors).some((message) => Boolean(message))) {
         setEditErrors(fieldErrors)
       }
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to update user.') })
+      notify.error(toErrorMessage(error, 'Unable to update user.'))
     } finally {
       setSubmitting(false)
     }
@@ -323,10 +323,10 @@ export function UsersPage() {
         method: 'PATCH',
         body: JSON.stringify({ isActive: nextActive }),
       })
-      notify({ severity: 'success', message: `User ${nextActive ? 'activated' : 'deactivated'}.` })
+      notify.success(`User ${nextActive ? 'activated' : 'deactivated'}.`)
       refreshGrid()
     } catch (error) {
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to update active status.') })
+      notify.error(toErrorMessage(error, 'Unable to update active status.'))
     }
   }
 
@@ -340,13 +340,13 @@ export function UsersPage() {
         method: 'POST',
         body: JSON.stringify({ password: resetPassword }),
       })
-      notify({ severity: 'success', message: 'Password reset.' })
+      notify.success('Password reset.')
       setResetOpen(false)
       setResetUser(null)
       setResetPassword('')
       refreshGrid()
     } catch (error) {
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to reset password.') })
+      notify.error(toErrorMessage(error, 'Unable to reset password.'))
     } finally {
       setSubmitting(false)
     }
@@ -362,13 +362,13 @@ export function UsersPage() {
         method: 'PATCH',
         body: JSON.stringify({ roles: rolesSelection }),
       })
-      notify({ severity: 'success', message: 'Roles updated.' })
+      notify.success('Roles updated.')
       setRolesOpen(false)
       setRolesUser(null)
       setRolesSelection([])
       refreshGrid()
     } catch (error) {
-      notify({ severity: 'error', message: toErrorMessage(error, 'Unable to update roles.') })
+      notify.error(toErrorMessage(error, 'Unable to update roles.'))
     } finally {
       setSubmitting(false)
     }

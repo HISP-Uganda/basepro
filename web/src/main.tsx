@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import './style.css'
+import { AppErrorBoundary } from './components/AppErrorBoundary'
 import { router } from './routes'
 import { SnackbarProvider } from './ui/snackbar'
 
@@ -12,10 +13,12 @@ const queryClient = new QueryClient()
 
 root.render(
   <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <SnackbarProvider>
-        <RouterProvider router={router} />
-      </SnackbarProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <SnackbarProvider>
+          <RouterProvider router={router} />
+        </SnackbarProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   </React.StrictMode>,
 )

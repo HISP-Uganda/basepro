@@ -1,19 +1,14 @@
-export type NotificationSeverity = 'info' | 'success' | 'warning' | 'error'
+import type { AppNotification } from './types'
 
-export interface Notification {
-  message: string
-  severity: NotificationSeverity
-}
+const listeners = new Set<(notification: AppNotification) => void>()
 
-const listeners = new Set<(notification: Notification) => void>()
-
-export function notify(notification: Notification) {
+export function dispatchNotification(notification: AppNotification) {
   for (const listener of listeners) {
     listener(notification)
   }
 }
 
-export function subscribeNotifications(listener: (notification: Notification) => void) {
+export function subscribeNotifications(listener: (notification: AppNotification) => void) {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Alert, Container, Stack, Typography } from '@mui/material'
+import { Alert, Button, Container, Stack, Typography } from '@mui/material'
 
 export function RouteErrorPage() {
   return (
@@ -8,7 +8,10 @@ export function RouteErrorPage() {
         <Typography variant="h4" component="h1">
           Something went wrong
         </Typography>
-        <Alert severity="error">An unexpected routing error occurred.</Alert>
+        <Alert severity="error">We could not load this route right now.</Alert>
+        <Button variant="contained" onClick={() => window.location.reload()} sx={{ width: 'fit-content' }}>
+          Reload Page
+        </Button>
       </Stack>
     </Container>
   )

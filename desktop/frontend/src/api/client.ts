@@ -60,13 +60,15 @@ class ApiError extends Error {
   status: number
   code?: string
   details?: Record<string, unknown>
+  requestId?: string
 
-  constructor(status: number, message: string, code?: string, details?: Record<string, unknown>) {
+  constructor(status: number, message: string, code?: string, details?: Record<string, unknown>, requestId?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.details = details
+    this.requestId = requestId
   }
 }
 
@@ -89,6 +91,7 @@ async function parseApiError(response: Response) {
   let code: string | undefined
   let message = `Request failed: HTTP ${response.status}`
   let details: Record<string, unknown> | undefined
+  const requestId = response.headers.get('X-Request-Id') ?? response.headers.get('x-request-id') ?? undefined
 
   try {
     const payload = (await response.json()) as ApiErrorPayload
@@ -101,7 +104,7 @@ async function parseApiError(response: Response) {
     // Keep fallback message when body is not JSON.
   }
 
-  return new ApiError(response.status, message, code, details)
+  return new ApiError(response.status, message, code, details, requestId)
 }
 
 export function createApiClient(deps: ApiClientDeps) {

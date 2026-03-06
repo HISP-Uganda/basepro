@@ -1,6 +1,7 @@
 import { resolveApiBaseUrl } from './apiBaseUrl'
 
 export type ApiError = {
+  status?: number
   code: string
   message: string
   details?: unknown
@@ -75,6 +76,7 @@ async function parseApiError(response: Response): Promise<ApiError> {
   }
 
   return {
+    status: response.status,
     code,
     message,
     details,

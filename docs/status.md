@@ -1,5 +1,73 @@
 # Status
 
+## Milestone I — Desktop/Web Notification + Error Handling Foundation (Complete)
+
+### What changed
+- Introduced a shared notification contract in both clients via `AppNotification` with consistent fields:
+  - `kind`, `message`, optional `title`, `autoHideDuration`, `requestId`, and `persistent`
+- Added notification facades with standardized API:
+  - desktop: `notify.success/error/warning/info` via pub/sub store integration
+  - web: `useAppNotify()` facade backed by existing `SnackbarProvider`
+- Added reusable error normalization in both clients:
+  - `normalizeError(error)` -> `NormalizedAppError`
+  - normalized types include: `validation`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `network`, `timeout`, `server`, `unknown`
+  - validation details are mapped to `fieldErrors`
+  - `requestId` propagation is supported
+- Added reusable `handleAppError(error, options?)` helpers in both clients:
+  - normalization
+  - optional notification dispatch
+  - optional validation-field mapping callback
+  - optional session-expiry callback for unauthorized errors
+- Standardized session-expiry UX behavior across desktop/web:
+  - unauthorized/expired auth clears local session state through existing auth flows
+  - users receive session-expired notification
+  - redirect to login occurs
+  - intended destination is preserved in session storage and consumed after successful login
+- Added root-level error boundaries in both clients:
+  - friendly fallback
+  - reload action
+  - no stack trace exposure in production
+  - dev-mode message visibility only
+- Improved web route error fallback UI with reload action.
+- Added documentation note:
+  - `docs/notes/error-handling.md`
+- Saved prompt copy:
+  - `docs/prompts/2026-03-06-notification-error-foundation.md` (gitignored)
+
+### Backend alignment notes
+- No backend contract redesign was required.
+- Existing backend error envelope and request-id headers were already compatible with normalization.
+- Client-side alignment update:
+  - web `ApiError` now carries `status` to improve consistent normalization classification.
+  - desktop `ApiError` now carries `requestId` from response headers.
+
+### Tests and verification
+- Backend:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...` -> PASS
+- Desktop frontend:
+  - `cd desktop/frontend && npm test -- --run` -> PASS
+- Web frontend:
+  - `cd web && npm test -- --run` -> PASS
+- Web production build:
+  - `cd web && npm run build` -> PASS
+
+### Added targeted tests
+- Desktop:
+  - `src/notifications/facade.test.ts`
+  - `src/errors/normalizeError.test.ts`
+  - `src/errors/handleAppError.test.ts`
+  - `src/auth/sessionExpiry.test.ts`
+- Web:
+  - `src/ui/snackbar.test.tsx` (notification facade dispatch)
+  - `src/errors/normalizeError.test.ts`
+  - `src/errors/handleAppError.test.ts`
+  - `src/auth/sessionExpiry.test.ts`
+
+### Known follow-ups
+- Existing non-blocking MUI jsdom `anchorEl` warnings remain in frontend test logs.
+- Existing non-blocking Vite bundle warnings (`'use client'` directives and chunk-size notices) remain unchanged.
+- Full page-by-page migration from ad-hoc page-level error parsing to `handleAppError` is intentionally incremental and can continue in the next milestone.
+
 ## Milestone H — Desktop/Web Authentication UI Parity (Complete)
 
 ### What changed

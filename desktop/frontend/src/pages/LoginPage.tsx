@@ -8,7 +8,9 @@ import {
 } from '@mui/material'
 import { useNavigate, useRouter } from '@tanstack/react-router'
 import { ApiError, createApiClient } from '../api/client'
+import { consumeIntendedDestination } from '../auth/sessionExpiry'
 import { clearSession, setSession, setSessionPrincipal } from '../auth/session'
+import { normalizeError } from '../errors/normalizeError'
 import { AuthSplitLayout } from './auth/AuthSplitLayout'
 import { useAuthBranding } from './auth/useAuthBranding'
 
@@ -50,13 +52,15 @@ export function LoginPage() {
         roles: me.roles ?? [],
         permissions: me.permissions ?? [],
       })
-      await navigate({ to: '/dashboard', replace: true })
+      await navigate({ to: consumeIntendedDestination('/dashboard'), replace: true })
     } catch (error) {
       await clearSession()
       if (error instanceof ApiError && error.status === 401) {
         setErrorMessage('Invalid username or password.')
       } else {
-        setErrorMessage('Unable to sign in right now. Please try again.')
+        const normalized = normalizeError(error, 'Unable to sign in right now. Please try again.')
+        const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+        setErrorMessage(`${normalized.message}${requestId}`)
       }
     } finally {
       setSubmitting(false)

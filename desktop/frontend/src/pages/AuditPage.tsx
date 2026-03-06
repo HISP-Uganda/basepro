@@ -17,7 +17,7 @@ import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { JsonMetadataDialog } from '../components/admin/JsonMetadataDialog'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
-import { notify } from '../notifications/store'
+import { notify } from '../notifications/facade'
 
 interface AuditRow {
   id: number
@@ -132,7 +132,7 @@ export function AuditPage() {
         }
       } catch (error) {
         const message = error instanceof ApiError ? error.message : 'Unable to load audit logs.'
-        notify({ severity: 'error', message })
+        notify.error(message)
         throw error
       }
     },
@@ -212,7 +212,7 @@ export function AuditPage() {
         open={metadataDialogOpen}
         metadata={selectedMetadata}
         onClose={() => setMetadataDialogOpen(false)}
-        onCopied={() => notify({ severity: 'success', message: 'Metadata copied.' })}
+        onCopied={() => notify.success('Metadata copied.')}
       />
     </Box>
   )

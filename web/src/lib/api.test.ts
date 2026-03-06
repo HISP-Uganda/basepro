@@ -46,6 +46,7 @@ describe('apiRequest', () => {
     }
 
     expect(caught).toEqual({
+      status: 401,
       code: 'AUTH_UNAUTHORIZED',
       message: 'Authentication required',
       details: { field: 'token' },

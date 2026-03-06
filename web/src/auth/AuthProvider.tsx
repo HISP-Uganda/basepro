@@ -1,7 +1,8 @@
 import React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { apiRequest, configureApiClient, type ApiError } from '../lib/api'
-import { useSnackbar } from '../ui/snackbar'
+import { useAppNotify } from '../notifications/facade'
+import { rememberIntendedDestination } from './sessionExpiry'
 import {
   clearAuthSnapshot,
   getAuthSnapshot,
@@ -47,7 +48,7 @@ function toAuthUser(payload: MeResponse): AuthUser {
 
 export function AuthProvider({ children }: React.PropsWithChildren) {
   const navigate = useNavigate()
-  const { showSnackbar } = useSnackbar()
+  const notify = useAppNotify()
   const [snapshot, setSnapshot] = React.useState(getAuthSnapshot())
   const refreshPromiseRef = React.useRef<Promise<boolean> | null>(null)
 
@@ -108,13 +109,12 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
   }, [applySession, clearSession])
 
   const handleSessionExpired = React.useCallback(async () => {
+    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    rememberIntendedDestination(currentPath)
     clearSession()
-    showSnackbar({
-      message: 'Session expired. Please log in again.',
-      severity: 'warning',
-    })
+    notify.warning('Session expired. Please log in again.', { persistent: true })
     await navigate({ to: '/login', replace: true })
-  }, [clearSession, navigate, showSnackbar])
+  }, [clearSession, navigate, notify])
 
   React.useEffect(() => {
     configureApiClient({

@@ -1,7 +1,9 @@
 import React from 'react'
 import { Alert, Button, Link, Stack, TextField } from '@mui/material'
 import { useNavigate } from '@tanstack/react-router'
-import { isApiError, useAuth } from '../auth/AuthProvider'
+import { consumeIntendedDestination } from '../auth/sessionExpiry'
+import { useAuth } from '../auth/AuthProvider'
+import { normalizeError } from '../errors/normalizeError'
 import { apiBaseUrl, appName } from '../lib/env'
 import { AuthSplitLayout } from './auth/AuthSplitLayout'
 import { useAuthBranding } from './auth/useAuthBranding'
@@ -22,14 +24,11 @@ export function LoginPage() {
 
     try {
       await auth.login(username, password)
-      await navigate({ to: '/dashboard', replace: true })
+      await navigate({ to: consumeIntendedDestination('/dashboard'), replace: true })
     } catch (error) {
-      if (isApiError(error)) {
-        const requestId = error.requestId ? ` Request ID: ${error.requestId}` : ''
-        setErrorMessage(`${error.message}${requestId}`)
-      } else {
-        setErrorMessage('Unable to sign in right now. Please try again.')
-      }
+      const normalized = normalizeError(error, 'Unable to sign in right now. Please try again.')
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSubmitting(false)
     }

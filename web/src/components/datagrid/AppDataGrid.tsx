@@ -10,8 +10,8 @@ import {
   type GridSortModel,
   type GridValidRowModel,
 } from '@mui/x-data-grid'
-import type { ApiError } from '../../lib/api'
-import { useSnackbar } from '../../ui/snackbar'
+import { handleAppError } from '../../errors/handleAppError'
+import { useAppNotify } from '../../notifications/facade'
 import {
   defaultDataGridPreferences,
   loadDataGridPreferences,
@@ -110,21 +110,6 @@ function applyColumnOrder<R extends GridValidRowModel>(columns: GridColDef<R>[],
   return ordered
 }
 
-function isApiError(error: unknown): error is ApiError {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-  const candidate = error as Partial<ApiError>
-  return typeof candidate.code === 'string' && typeof candidate.message === 'string'
-}
-
-function toErrorMessage(error: unknown) {
-  if (isApiError(error)) {
-    return error.requestId ? `${error.message} Request ID: ${error.requestId}` : error.message
-  }
-  return 'Unable to load data.'
-}
-
 export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
   columns,
   fetchData,
@@ -139,7 +124,7 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
   const stickyFields = stickyRightFields ?? EMPTY_STICKY_RIGHT_FIELDS
   const stickyFieldsKey = stickyFields.join('\u0000')
   const [enforcedStickyFields, setEnforcedStickyFields] = React.useState(stickyFields)
-  const { showSnackbar } = useSnackbar()
+  const notify = useAppNotify()
   const [rows, setRows] = React.useState<R[]>([])
   const [rowCount, setRowCount] = React.useState(0)
   const [loading, setLoading] = React.useState(false)
@@ -213,14 +198,17 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
         if (requestId !== requestIdRef.current) {
           return
         }
-        showSnackbar({ message: toErrorMessage(error), severity: 'error' })
+        void handleAppError(error, {
+          fallbackMessage: 'Unable to load data.',
+          notifier: notify,
+        })
       })
       .finally(() => {
         if (requestId === requestIdRef.current) {
           setLoading(false)
         }
       })
-  }, [hydrated, paginationModel, sortModel, filterModel, reloadToken, fetchData, showSnackbar])
+  }, [hydrated, paginationModel, sortModel, filterModel, reloadToken, fetchData, notify])
 
   React.useEffect(() => {
     if (!hydrated) {
