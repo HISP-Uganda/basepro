@@ -14,10 +14,15 @@ import (
 )
 
 func newTestHandler() *Handler {
+	handler, _ := newTestHandlerWithRepo()
+	return handler
+}
+
+func newTestHandlerWithRepo() (*Handler, *fakeRepo) {
 	repo := newFakeRepo()
 	rbacService := rbac.NewService(&fakeRBACRepo{rolesByUser: map[int64][]rbac.Role{}})
 	service := NewService(repo, rbacService, audit.NewService(&fakeAuditRepo{}), 4)
-	return NewHandler(service)
+	return NewHandler(service), repo
 }
 
 func withPrincipal(c *gin.Context) {
@@ -108,5 +113,45 @@ func TestCreateUserValidationErrorUsesStandardizedShape(t *testing.T) {
 	}
 	if _, ok := details["email"]; !ok {
 		t.Fatalf("expected details.email")
+	}
+}
+
+func TestListUsersSupportsQSearchFallbackAndPagination(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, repo := newTestHandlerWithRepo()
+	repo.users[1] = UserRecord{ID: 1, Username: "alice", Language: "English", IsActive: true}
+	repo.users[2] = UserRecord{ID: 2, Username: "bob", Language: "English", IsActive: true}
+
+	r := gin.New()
+	r.GET("/users", handler.List)
+
+	req := httptest.NewRequest(http.MethodGet, "/users?page=2&pageSize=10&q=ali", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	if repo.lastListQuery.Page != 2 || repo.lastListQuery.PageSize != 10 {
+		t.Fatalf("expected query page/pageSize 2/10, got %d/%d", repo.lastListQuery.Page, repo.lastListQuery.PageSize)
+	}
+	if repo.lastListQuery.Filter != "ali" {
+		t.Fatalf("expected q to map into filter, got %q", repo.lastListQuery.Filter)
+	}
+}
+
+func TestListUsersRejectsInvalidSortQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := newTestHandler()
+
+	r := gin.New()
+	r.GET("/users", handler.List)
+
+	req := httptest.NewRequest(http.MethodGet, "/users?sort=username:sideways", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", w.Code, w.Body.String())
 	}
 }

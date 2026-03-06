@@ -40,6 +40,7 @@ interface AppDataGridProps<R extends GridValidRowModel = GridValidRowModel> {
   storageKey: string
   getRowId?: (row: R) => string | number
   reloadToken?: number
+  externalQueryKey?: string
   enablePinnedColumns?: boolean
   stickyRightFields?: string[]
   pinActionsToRight?: boolean
@@ -130,6 +131,7 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
   storageKey,
   getRowId,
   reloadToken,
+  externalQueryKey,
   enablePinnedColumns = true,
   stickyRightFields,
   pinActionsToRight,
@@ -219,6 +221,13 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
         }
       })
   }, [hydrated, paginationModel, sortModel, filterModel, reloadToken, fetchData, showSnackbar])
+
+  React.useEffect(() => {
+    if (!hydrated) {
+      return
+    }
+    setPaginationModel((current) => (current.page === 0 ? current : { ...current, page: 0 }))
+  }, [externalQueryKey, hydrated])
 
   const orderedColumns = React.useMemo(() => applyColumnOrder(columns, columnOrder), [columns, columnOrder])
 

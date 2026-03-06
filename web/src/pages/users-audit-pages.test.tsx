@@ -501,9 +501,8 @@ describe('users and audit pages', () => {
     renderRoute('/permissions')
 
     expect(await screen.findByRole('heading', { name: 'Permissions', level: 1 })).toBeInTheDocument()
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), { target: { value: 'users' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'Module Scope' }), { target: { value: 'admin' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    fireEvent.change(screen.getByPlaceholderText('e.g. users.read'), { target: { value: 'users' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. admin'), { target: { value: 'admin' } })
 
     await waitFor(() => {
       expect(apiRequestSpy).toHaveBeenCalledWith(expect.stringContaining('/admin/permissions?'))

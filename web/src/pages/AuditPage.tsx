@@ -1,11 +1,21 @@
 import React from 'react'
-import { Box, Typography } from '@mui/material'
+import {
+  Box,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
 import { JsonMetadataDialog } from '../components/admin/JsonMetadataDialog'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
+import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { apiRequest } from '../lib/api'
-import { buildListQuery, type PaginatedResponse } from '../lib/pagination'
+import type { PaginatedResponse } from '../lib/pagination'
 import { useSnackbar } from '../ui/snackbar'
 
 interface AuditRow {
@@ -17,6 +27,16 @@ interface AuditRow {
   entityId?: string
   metadata?: unknown
 }
+
+const ACTION_FILTER_OPTIONS = [
+  '',
+  'users.create',
+  'users.update',
+  'users.reset_password',
+  'users.set_active',
+  'auth.login.success',
+  'auth.login.failure',
+]
 
 function compactMetadata(metadata: unknown) {
   if (metadata == null) {
@@ -35,27 +55,33 @@ function compactMetadata(metadata: unknown) {
 
 export function AuditPage() {
   const { showSnackbar } = useSnackbar()
+  const { searchInput, setSearchInput, search } = useAdminListSearch()
+
+  const [action, setAction] = React.useState('')
+  const { searchInput: actorUserIdInput, setSearchInput: setActorUserIdInput, search: actorUserId } = useAdminListSearch()
+  const { searchInput: dateFromInput, setSearchInput: setDateFromInput, search: dateFrom } = useAdminListSearch()
+  const { searchInput: dateToInput, setSearchInput: setDateToInput, search: dateTo } = useAdminListSearch()
+
   const [metadataDialogOpen, setMetadataDialogOpen] = React.useState(false)
   const [selectedMetadata, setSelectedMetadata] = React.useState<unknown>(null)
 
   const columns = React.useMemo<GridColDef<AuditRow>[]>(
     () => [
-      { field: 'id', headerName: 'ID', width: 90 },
       {
         field: 'timestamp',
         headerName: 'Timestamp',
-        minWidth: 220,
+        width: 210,
         valueGetter: (_value, row) => new Date(row.timestamp).toLocaleString(),
       },
-      { field: 'actorUserId', headerName: 'Actor User', width: 120 },
-      { field: 'action', headerName: 'Action', minWidth: 220, flex: 1 },
+      { field: 'actorUserId', headerName: 'Actor', width: 110 },
+      { field: 'action', headerName: 'Action', flex: 1, minWidth: 200 },
       { field: 'entityType', headerName: 'Entity Type', width: 140 },
       { field: 'entityId', headerName: 'Entity ID', width: 120 },
       {
         field: 'metadata',
         headerName: 'Metadata',
-        minWidth: 260,
         flex: 1,
+        minWidth: 260,
         sortable: false,
         valueGetter: (_value, row) => compactMetadata(row.metadata),
       },
@@ -86,14 +112,26 @@ export function AuditPage() {
     [],
   )
 
-  const fetchAudit = React.useCallback(async (params: AppDataGridFetchParams) => {
-    const query = buildListQuery(params)
-    const response = await apiRequest<PaginatedResponse<AuditRow>>(`/audit?${query}`)
-    return {
-      rows: response.items,
-      total: response.totalCount,
-    }
-  }, [])
+  const fetchAudit = React.useCallback(
+    async (params: AppDataGridFetchParams) => {
+      const query = buildAdminListRequestQuery(params, {
+        search,
+        extra: {
+          action,
+          actorUserId,
+          dateFrom: dateFrom ? `${dateFrom}T00:00:00Z` : undefined,
+          dateTo: dateTo ? `${dateTo}T23:59:59Z` : undefined,
+        },
+      })
+
+      const response = await apiRequest<PaginatedResponse<AuditRow>>(`/audit?${query}`)
+      return {
+        rows: response.items,
+        total: response.totalCount,
+      }
+    },
+    [action, actorUserId, dateFrom, dateTo, search],
+  )
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -101,13 +139,62 @@ export function AuditPage() {
         <Typography variant="h5" component="h1" gutterBottom>
           Audit Log
         </Typography>
-        <Typography color="text.secondary">Server-side pagination, sorting, filtering, and metadata details for audit events.</Typography>
+        <Typography color="text.secondary">View audit events with server-side filtering and pagination.</Typography>
       </Box>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+        <TextField
+          label="Search"
+          placeholder="Search audit action text"
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          sx={{ minWidth: 260 }}
+        />
+
+        <FormControl sx={{ minWidth: 220 }}>
+          <InputLabel id="audit-action-label">Action</InputLabel>
+          <Select labelId="audit-action-label" value={action} label="Action" onChange={(event) => setAction(event.target.value)}>
+            <MenuItem value="">
+              <em>All actions</em>
+            </MenuItem>
+            {ACTION_FILTER_OPTIONS.filter(Boolean).map((option) => (
+              <MenuItem key={option} value={option}>
+                {option}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <TextField
+          label="Actor User ID"
+          value={actorUserIdInput}
+          onChange={(event) => setActorUserIdInput(event.target.value)}
+          sx={{ minWidth: 180 }}
+        />
+
+        <TextField
+          label="Date From"
+          type="date"
+          value={dateFromInput}
+          onChange={(event) => setDateFromInput(event.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+
+        <TextField
+          label="Date To"
+          type="date"
+          value={dateToInput}
+          onChange={(event) => setDateToInput(event.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+      </Stack>
+
       <Box sx={{ height: 620, width: '100%', minWidth: 0, overflow: 'hidden' }}>
         <AppDataGrid
           columns={columns}
           fetchData={fetchAudit}
           storageKey="audit-table"
+          externalQueryKey={`${search}|${action}|${actorUserId}|${dateFrom}|${dateTo}`}
           stickyRightFields={['actions']}
           enablePinnedColumns
         />

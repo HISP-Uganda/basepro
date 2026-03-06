@@ -11,10 +11,11 @@ import {
 } from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
 import { ApiError } from '../api/client'
-import { buildServerQuery, type PaginatedResponse } from '../api/pagination'
+import type { PaginatedResponse } from '../api/pagination'
 import { useApiClient } from '../api/useApiClient'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { JsonMetadataDialog } from '../components/admin/JsonMetadataDialog'
+import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { notify } from '../notifications/store'
 
@@ -55,12 +56,12 @@ function compactMetadata(metadata: unknown) {
 
 export function AuditPage() {
   const apiClient = useApiClient()
+  const { searchInput, setSearchInput, search } = useAdminListSearch()
 
   const [action, setAction] = React.useState('')
-  const [actorUserId, setActorUserId] = React.useState('')
-  const [dateFrom, setDateFrom] = React.useState('')
-  const [dateTo, setDateTo] = React.useState('')
-  const [reloadToken, setReloadToken] = React.useState(0)
+  const { searchInput: actorUserIdInput, setSearchInput: setActorUserIdInput, search: actorUserId } = useAdminListSearch()
+  const { searchInput: dateFromInput, setSearchInput: setDateFromInput, search: dateFrom } = useAdminListSearch()
+  const { searchInput: dateToInput, setSearchInput: setDateToInput, search: dateTo } = useAdminListSearch()
   const [metadataDialogOpen, setMetadataDialogOpen] = React.useState(false)
   const [selectedMetadata, setSelectedMetadata] = React.useState<unknown>(null)
 
@@ -113,22 +114,18 @@ export function AuditPage() {
 
   const fetchAudit = React.useCallback(
     async (params: AppDataGridFetchParams) => {
-      const query = new URLSearchParams(buildServerQuery(params))
-      if (action.trim()) {
-        query.set('action', action.trim())
-      }
-      if (actorUserId.trim()) {
-        query.set('actor_user_id', actorUserId.trim())
-      }
-      if (dateFrom.trim()) {
-        query.set('date_from', `${dateFrom.trim()}T00:00:00Z`)
-      }
-      if (dateTo.trim()) {
-        query.set('date_to', `${dateTo.trim()}T23:59:59Z`)
-      }
+      const query = buildAdminListRequestQuery(params, {
+        search,
+        extra: {
+          action,
+          actorUserId,
+          dateFrom: dateFrom ? `${dateFrom}T00:00:00Z` : undefined,
+          dateTo: dateTo ? `${dateTo}T23:59:59Z` : undefined,
+        },
+      })
 
       try {
-        const payload = await apiClient.request<PaginatedResponse<AuditRow>>(`/api/v1/audit?${query.toString()}`)
+        const payload = await apiClient.request<PaginatedResponse<AuditRow>>(`/api/v1/audit?${query}`)
         return {
           rows: payload.items,
           total: payload.totalCount,
@@ -139,7 +136,7 @@ export function AuditPage() {
         throw error
       }
     },
-    [action, actorUserId, apiClient, dateFrom, dateTo],
+    [action, actorUserId, apiClient, dateFrom, dateTo, search],
   )
 
   return (
@@ -152,16 +149,20 @@ export function AuditPage() {
       </Box>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+        <TextField
+          label="Search"
+          placeholder="Search audit action text"
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          sx={{ minWidth: 260 }}
+        />
         <FormControl sx={{ minWidth: 220 }}>
           <InputLabel id="audit-action-label">Action</InputLabel>
           <Select
             labelId="audit-action-label"
             value={action}
             label="Action"
-            onChange={(event) => {
-              setAction(event.target.value)
-              setReloadToken((value) => value + 1)
-            }}
+            onChange={(event) => setAction(event.target.value)}
           >
             <MenuItem value="">
               <em>All actions</em>
@@ -176,31 +177,24 @@ export function AuditPage() {
 
         <TextField
           label="Actor User ID"
-          value={actorUserId}
-          onChange={(event) => setActorUserId(event.target.value)}
-          onBlur={() => setReloadToken((value) => value + 1)}
+          value={actorUserIdInput}
+          onChange={(event) => setActorUserIdInput(event.target.value)}
           sx={{ minWidth: 180 }}
         />
 
         <TextField
           label="Date From"
           type="date"
-          value={dateFrom}
-          onChange={(event) => {
-            setDateFrom(event.target.value)
-            setReloadToken((value) => value + 1)
-          }}
+          value={dateFromInput}
+          onChange={(event) => setDateFromInput(event.target.value)}
           InputLabelProps={{ shrink: true }}
         />
 
         <TextField
           label="Date To"
           type="date"
-          value={dateTo}
-          onChange={(event) => {
-            setDateTo(event.target.value)
-            setReloadToken((value) => value + 1)
-          }}
+          value={dateToInput}
+          onChange={(event) => setDateToInput(event.target.value)}
           InputLabelProps={{ shrink: true }}
         />
       </Stack>
@@ -210,7 +204,7 @@ export function AuditPage() {
           columns={columns}
           fetchData={fetchAudit}
           storageKey="audit-table"
-          reloadToken={reloadToken}
+          externalQueryKey={`${search}|${action}|${actorUserId}|${dateFrom}|${dateTo}`}
           stickyRightFields={['actions']}
         />
       </Box>

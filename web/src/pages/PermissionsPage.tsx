@@ -4,9 +4,10 @@ import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { getAuthSnapshot } from '../auth/state'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { JsonMetadataDialog } from '../components/admin/JsonMetadataDialog'
+import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { apiRequest } from '../lib/api'
-import { buildListQuery, type PaginatedResponse } from '../lib/pagination'
+import type { PaginatedResponse } from '../lib/pagination'
 import { useSnackbar } from '../ui/snackbar'
 
 interface PermissionRow {
@@ -37,9 +38,12 @@ export function PermissionsPage() {
     })
   }, [])
 
-  const [queryText, setQueryText] = React.useState('')
-  const [moduleScope, setModuleScope] = React.useState('')
-  const [reloadToken, setReloadToken] = React.useState(0)
+  const { searchInput, setSearchInput, search } = useAdminListSearch()
+  const {
+    searchInput: moduleScopeInput,
+    setSearchInput: setModuleScopeInput,
+    search: moduleScope,
+  } = useAdminListSearch()
 
   const [metadataOpen, setMetadataOpen] = React.useState(false)
   const [selectedMetadata, setSelectedMetadata] = React.useState<unknown>(null)
@@ -49,21 +53,19 @@ export function PermissionsPage() {
 
   const fetchPermissions = React.useCallback(
     async (params: AppDataGridFetchParams) => {
-      const query = new URLSearchParams(buildListQuery(params))
-      if (queryText.trim()) {
-        query.set('q', queryText.trim())
-      }
-      if (moduleScope.trim()) {
-        query.set('moduleScope', moduleScope.trim())
-      }
-
-      const payload = await apiRequest<PaginatedResponse<PermissionRow>>(`/admin/permissions?${query.toString()}`)
+      const query = buildAdminListRequestQuery(params, {
+        search,
+        extra: {
+          moduleScope,
+        },
+      })
+      const payload = await apiRequest<PaginatedResponse<PermissionRow>>(`/admin/permissions?${query}`)
       return {
         rows: Array.isArray(payload.items) ? payload.items : [],
         total: typeof payload.totalCount === 'number' ? payload.totalCount : 0,
       }
     },
-    [moduleScope, queryText],
+    [moduleScope, search],
   )
 
   const columns = React.useMemo<GridColDef<PermissionRow>[]>(
@@ -119,10 +121,6 @@ export function PermissionsPage() {
     [canRead],
   )
 
-  const applyFilters = React.useCallback(() => {
-    setReloadToken((value) => value + 1)
-  }, [])
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Box>
@@ -136,32 +134,17 @@ export function PermissionsPage() {
         <TextField
           label="Search"
           placeholder="e.g. users.read"
-          value={queryText}
-          onChange={(event) => setQueryText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              applyFilters()
-            }
-          }}
-          onBlur={applyFilters}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
           sx={{ minWidth: 280 }}
         />
         <TextField
           label="Module Scope"
           placeholder="e.g. admin"
-          value={moduleScope}
-          onChange={(event) => setModuleScope(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              applyFilters()
-            }
-          }}
-          onBlur={applyFilters}
+          value={moduleScopeInput}
+          onChange={(event) => setModuleScopeInput(event.target.value)}
           sx={{ minWidth: 220 }}
         />
-        <Button variant="outlined" onClick={applyFilters}>
-          Apply
-        </Button>
       </Stack>
 
       <Box sx={{ height: 620, width: '100%', minWidth: 0, overflow: 'hidden' }}>
@@ -169,7 +152,7 @@ export function PermissionsPage() {
           columns={columns}
           fetchData={fetchPermissions}
           storageKey="permissions-table"
-          reloadToken={reloadToken}
+          externalQueryKey={`${search}|${moduleScope}`}
           enablePinnedColumns
           stickyRightFields={['actions']}
         />

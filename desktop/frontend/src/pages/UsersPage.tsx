@@ -16,10 +16,11 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { ApiError } from '../api/client'
-import { buildServerQuery, type PaginatedResponse } from '../api/pagination'
+import type { PaginatedResponse } from '../api/pagination'
 import { useApiClient } from '../api/useApiClient'
 import { useSessionPrincipal } from '../auth/hooks'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
+import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { notify } from '../notifications/store'
 
@@ -170,6 +171,7 @@ export function UsersPage() {
   const canReadRoles = Boolean(principal?.permissions.includes('users.read'))
 
   const [reloadToken, setReloadToken] = React.useState(0)
+  const { searchInput, setSearchInput, search } = useAdminListSearch()
 
   const [roleOptions, setRoleOptions] = React.useState<RoleOption[]>([])
   const [loadingRoleOptions, setLoadingRoleOptions] = React.useState(false)
@@ -221,14 +223,14 @@ export function UsersPage() {
 
   const fetchUsers = React.useCallback(
     async (params: AppDataGridFetchParams) => {
-      const query = buildServerQuery(params)
+      const query = buildAdminListRequestQuery(params, { search })
       const payload = await apiClient.request<PaginatedResponse<UserRow>>(`/api/v1/users?${query}`)
       return {
         rows: payload.items,
         total: payload.totalCount,
       }
     },
-    [apiClient],
+    [apiClient, search],
   )
 
   const onCreateUser = async () => {
@@ -514,12 +516,21 @@ export function UsersPage() {
         </Button>
       </Box>
 
+      <TextField
+        label="Search"
+        placeholder="Search username, email, or display name"
+        value={searchInput}
+        onChange={(event) => setSearchInput(event.target.value)}
+        sx={{ maxWidth: 420 }}
+      />
+
       <Box sx={{ height: 620, width: '100%', minWidth: 0, overflow: 'hidden' }}>
         <AppDataGrid
           columns={columns}
           fetchData={fetchUsers}
           storageKey="users-table"
           reloadToken={reloadToken}
+          externalQueryKey={search}
           stickyRightFields={['actions']}
         />
       </Box>

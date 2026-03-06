@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +50,9 @@ func newFakeAdminRepo() *fakeAdminRepo {
 func (f *fakeAdminRepo) ListRoles(_ context.Context, query RoleListQuery) (RoleListResult, error) {
 	items := []RoleSummary{}
 	for _, role := range f.rolesByID {
+		if query.Filter != "" && !strings.Contains(strings.ToLower(role.Name), strings.ToLower(query.Filter)) {
+			continue
+		}
 		items = append(items, RoleSummary{
 			RoleRecord:      role,
 			PermissionCount: len(f.permissionsByRoleID[role.ID]),
@@ -101,7 +105,7 @@ func (f *fakeAdminRepo) ListRoleUsers(_ context.Context, roleID int64) ([]RoleUs
 func (f *fakeAdminRepo) ListPermissions(_ context.Context, query PermissionListQuery) (PermissionListResult, error) {
 	items := []PermissionRecord{}
 	for _, permission := range f.permissionsByName {
-		if query.Query != "" && permission.Name != query.Query {
+		if query.Query != "" && !strings.Contains(strings.ToLower(permission.Name), strings.ToLower(query.Query)) {
 			continue
 		}
 		items = append(items, permission)
@@ -227,6 +231,46 @@ func TestAdminHandlerListPermissions(t *testing.T) {
 	items, ok := body["items"].([]any)
 	if !ok || len(items) == 0 {
 		t.Fatalf("expected list items in response")
+	}
+}
+
+func TestAdminHandlerListRolesSupportsQSearch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := newFakeAdminRepo()
+	handler := NewAdminHandler(NewAdminService(repo, audit.NewService(&fakeAuditRepo{})))
+
+	r := gin.New()
+	r.GET("/roles", handler.ListRoles)
+	req := httptest.NewRequest(http.MethodGet, "/roles?page=1&pageSize=25&q=view", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	items, ok := body["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one filtered role, got %v", body["items"])
+	}
+}
+
+func TestAdminHandlerListRolesRejectsInvalidSort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := newFakeAdminRepo()
+	handler := NewAdminHandler(NewAdminService(repo, audit.NewService(&fakeAuditRepo{})))
+
+	r := gin.New()
+	r.GET("/roles", handler.ListRoles)
+	req := httptest.NewRequest(http.MethodGet, "/roles?sort=name:sideways", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
 	}
 }
 

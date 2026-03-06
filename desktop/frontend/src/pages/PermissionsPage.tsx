@@ -1,11 +1,12 @@
 import React from 'react'
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, Typography } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
-import { buildServerQuery, type PaginatedResponse } from '../api/pagination'
+import type { PaginatedResponse } from '../api/pagination'
 import { useApiClient } from '../api/useApiClient'
 import { useSessionPrincipal } from '../auth/hooks'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { JsonMetadataDialog } from '../components/admin/JsonMetadataDialog'
+import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { notify } from '../notifications/store'
 
@@ -29,9 +30,12 @@ export function PermissionsPage() {
   const principal = useSessionPrincipal()
   const canRead = Boolean(principal?.permissions.includes('users.read'))
 
-  const [queryText, setQueryText] = React.useState('')
-  const [moduleScope, setModuleScope] = React.useState('')
-  const [reloadToken, setReloadToken] = React.useState(0)
+  const { searchInput, setSearchInput, search } = useAdminListSearch()
+  const {
+    searchInput: moduleScopeInput,
+    setSearchInput: setModuleScopeInput,
+    search: moduleScope,
+  } = useAdminListSearch()
 
   const [metadataOpen, setMetadataOpen] = React.useState(false)
   const [selectedMetadata, setSelectedMetadata] = React.useState<unknown>(null)
@@ -41,21 +45,19 @@ export function PermissionsPage() {
 
   const fetchPermissions = React.useCallback(
     async (params: AppDataGridFetchParams) => {
-      const query = new URLSearchParams(buildServerQuery(params))
-      if (queryText.trim()) {
-        query.set('q', queryText.trim())
-      }
-      if (moduleScope.trim()) {
-        query.set('moduleScope', moduleScope.trim())
-      }
-
-      const payload = await apiClient.request<PaginatedResponse<PermissionRow>>(`/api/v1/admin/permissions?${query.toString()}`)
+      const query = buildAdminListRequestQuery(params, {
+        search,
+        extra: {
+          moduleScope,
+        },
+      })
+      const payload = await apiClient.request<PaginatedResponse<PermissionRow>>(`/api/v1/admin/permissions?${query}`)
       return {
         rows: Array.isArray(payload.items) ? payload.items : [],
         total: typeof payload.totalCount === 'number' ? payload.totalCount : 0,
       }
     },
-    [apiClient, moduleScope, queryText],
+    [apiClient, moduleScope, search],
   )
 
   const columns = React.useMemo<GridColDef<PermissionRow>[]>(
@@ -111,10 +113,6 @@ export function PermissionsPage() {
     [canRead],
   )
 
-  const applyFilters = React.useCallback(() => {
-    setReloadToken((value) => value + 1)
-  }, [])
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Box>
@@ -130,32 +128,17 @@ export function PermissionsPage() {
         <TextField
           label="Search"
           placeholder="e.g. users.read"
-          value={queryText}
-          onChange={(event) => setQueryText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              applyFilters()
-            }
-          }}
-          onBlur={applyFilters}
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
           sx={{ minWidth: 280 }}
         />
         <TextField
           label="Module Scope"
           placeholder="e.g. admin"
-          value={moduleScope}
-          onChange={(event) => setModuleScope(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              applyFilters()
-            }
-          }}
-          onBlur={applyFilters}
+          value={moduleScopeInput}
+          onChange={(event) => setModuleScopeInput(event.target.value)}
           sx={{ minWidth: 220 }}
         />
-        <Button variant="outlined" onClick={applyFilters}>
-          Apply
-        </Button>
       </Stack>
 
       <Box sx={{ height: 620, width: '100%', minWidth: 0, overflow: 'hidden' }}>
@@ -163,7 +146,7 @@ export function PermissionsPage() {
           columns={columns}
           fetchData={fetchPermissions}
           storageKey="permissions-table"
-          reloadToken={reloadToken}
+          externalQueryKey={`${search}|${moduleScope}`}
           stickyRightFields={['actions']}
         />
       </Box>

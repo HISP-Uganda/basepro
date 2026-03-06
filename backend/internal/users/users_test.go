@@ -78,6 +78,7 @@ type fakeRepo struct {
 	users          map[int64]UserRecord
 	passwordHashes map[int64]string
 	nextID         int64
+	lastListQuery  ListQuery
 }
 
 func newFakeRepo() *fakeRepo {
@@ -88,12 +89,16 @@ func newFakeRepo() *fakeRepo {
 	}
 }
 
-func (f *fakeRepo) ListUsers(_ context.Context, _ ListQuery) (ListResult, error) {
+func (f *fakeRepo) ListUsers(_ context.Context, query ListQuery) (ListResult, error) {
+	f.lastListQuery = query
 	items := make([]UserRecord, 0, len(f.users))
 	for _, item := range f.users {
+		if query.Filter != "" && !strings.Contains(strings.ToLower(item.Username), strings.ToLower(query.Filter)) {
+			continue
+		}
 		items = append(items, item)
 	}
-	return ListResult{Items: items, Total: len(items), Page: 1, PageSize: 25}, nil
+	return ListResult{Items: items, Total: len(items), Page: query.Page, PageSize: query.PageSize}, nil
 }
 
 func (f *fakeRepo) GetUserByID(_ context.Context, userID int64) (UserRecord, error) {

@@ -18,9 +18,10 @@ import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { getAuthSnapshot } from '../auth/state'
 import { isApiError } from '../auth/AuthProvider'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
+import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { apiRequest } from '../lib/api'
-import { buildListQuery, type PaginatedResponse } from '../lib/pagination'
+import type { PaginatedResponse } from '../lib/pagination'
 import { useSnackbar } from '../ui/snackbar'
 
 interface UserRow {
@@ -182,6 +183,7 @@ export function UsersPage() {
   }, [])
 
   const [reloadToken, setReloadToken] = React.useState(0)
+  const { searchInput, setSearchInput, search } = useAdminListSearch()
   const [roleOptions, setRoleOptions] = React.useState<RoleOption[]>([])
   const [loadingRoleOptions, setLoadingRoleOptions] = React.useState(false)
 
@@ -226,13 +228,13 @@ export function UsersPage() {
   }, [loadRoleOptions])
 
   const fetchUsers = React.useCallback(async (params: AppDataGridFetchParams) => {
-    const query = buildListQuery(params)
+    const query = buildAdminListRequestQuery(params, { search })
     const response = await apiRequest<PaginatedResponse<UserRow>>(`/users?${query}`)
     return {
       rows: response.items,
       total: response.totalCount,
     }
-  }, [])
+  }, [search])
 
   const onCreateUser = async () => {
     setSubmitting(true)
@@ -446,12 +448,20 @@ export function UsersPage() {
           </Button>
         ) : null}
       </Box>
+      <TextField
+        label="Search"
+        placeholder="Search username, email, or display name"
+        value={searchInput}
+        onChange={(event) => setSearchInput(event.target.value)}
+        sx={{ maxWidth: 420 }}
+      />
       <Box sx={{ height: 620, width: '100%', minWidth: 0, overflow: 'hidden' }}>
         <AppDataGrid
           columns={columns}
           fetchData={fetchUsers}
           storageKey="users-table"
           reloadToken={reloadToken}
+          externalQueryKey={search}
           enablePinnedColumns
           stickyRightFields={['actions']}
         />

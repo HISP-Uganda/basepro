@@ -7,6 +7,7 @@ import (
 
 	"basepro/backend/internal/apperror"
 	"basepro/backend/internal/auth"
+	"basepro/backend/internal/listquery"
 	"github.com/gin-gonic/gin"
 )
 
@@ -53,17 +54,38 @@ type resetPasswordRequest struct {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "25"))
-	sortField, sortOrder := parseSortQuery(c.Query("sort"))
-	filterField, filterValue := parseFilterQuery(c.Query("filter"))
+	page, err := listquery.ParseInt(c.Query("page"), 1, 1, 100000, "page")
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"page": []string{err.Error()}}))
+		return
+	}
+	pageSize, err := listquery.ParseInt(c.Query("pageSize"), 25, 1, 200, "pageSize")
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"pageSize": []string{err.Error()}}))
+		return
+	}
+	sortField, sortOrder, err := listquery.ParseSort(c.Query("sort"))
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"sort": []string{err.Error()}}))
+		return
+	}
+	filterField, filterValue, err := listquery.ParseFilter(c.Query("filter"))
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"filter": []string{err.Error()}}))
+		return
+	}
+	search := listquery.ResolveSearch(c.Query("q"), filterField, filterValue, map[string]struct{}{
+		"username":    {},
+		"email":       {},
+		"displayName": {},
+	})
 
 	list, err := h.service.ListUsers(c.Request.Context(), ListQuery{
 		Page:      page,
 		PageSize:  pageSize,
 		SortField: sortField,
 		SortOrder: sortOrder,
-		Filter:    filterForUsers(filterField, filterValue),
+		Filter:    search,
 	})
 	if err != nil {
 		apperror.Write(c, err)
@@ -235,40 +257,6 @@ func actorUserID(principal auth.Principal) *int64 {
 		return nil
 	}
 	return &principal.UserID
-}
-
-func parseSortQuery(raw string) (field string, order string) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", ""
-	}
-	parts := strings.SplitN(value, ":", 2)
-	if len(parts) == 1 {
-		return strings.TrimSpace(parts[0]), "asc"
-	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-}
-
-func parseFilterQuery(raw string) (field string, value string) {
-	filter := strings.TrimSpace(raw)
-	if filter == "" {
-		return "", ""
-	}
-	parts := strings.SplitN(filter, ":", 2)
-	if len(parts) == 1 {
-		return "", strings.TrimSpace(parts[0])
-	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-}
-
-func filterForUsers(field, value string) string {
-	if strings.TrimSpace(value) == "" {
-		return ""
-	}
-	if field == "" || field == "username" || field == "email" || field == "displayName" {
-		return value
-	}
-	return ""
 }
 
 func normalizeRoles(roles []string) []string {

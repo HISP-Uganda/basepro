@@ -10,6 +10,7 @@ vi.mock('@mui/x-data-grid', () => {
     DataGrid: (props: Record<string, any>) => (
       <div>
         <div data-testid="page-size">{String(props.paginationModel.pageSize)}</div>
+        <div data-testid="page-number">{String(props.paginationModel.page)}</div>
         <div data-testid="username-visibility">{String(props.columnVisibilityModel?.username ?? true)}</div>
         <div data-testid="pinned-right">{String((props.pinnedColumns?.right ?? []).join(','))}</div>
         <button
@@ -87,13 +88,22 @@ function renderGrid(store: SettingsStore, fetchData: (params: AppDataGridFetchPa
   }
 
   const rootRoute = createRootRouteWithContext<RouterContext>()({
-    component: () => (
-      <AppDataGrid
-        storageKey="users-table"
-        columns={[{ field: 'id' }, { field: 'username' }, { field: 'actions' }]}
-        fetchData={fetchData}
-      />
-    ),
+    component: () => {
+      const [queryKey, setQueryKey] = React.useState('initial')
+      return (
+        <>
+          <button type="button" onClick={() => setQueryKey('changed')}>
+            change-query
+          </button>
+          <AppDataGrid
+            storageKey="users-table"
+            columns={[{ field: 'id' }, { field: 'username' }, { field: 'actions' }]}
+            fetchData={fetchData}
+            externalQueryKey={queryKey}
+          />
+        </>
+      )
+    },
   })
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -193,5 +203,21 @@ describe('AppDataGrid', () => {
       expect(fetchData).toHaveBeenCalled()
       expect(screen.getByTestId('pinned-right')).toHaveTextContent('actions')
     })
+  })
+
+  it('resets pagination to page 1 when external query key changes', async () => {
+    const store = createMockSettingsStore(defaultSettings)
+    const fetchData = vi.fn(async () => ({ rows: [], total: 0 }))
+    renderGrid(store, fetchData)
+
+    await waitFor(() => expect(fetchData).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })))
+
+    fireEvent.click(screen.getByRole('button', { name: 'next-page' }))
+    await waitFor(() => expect(fetchData).toHaveBeenCalledWith(expect.objectContaining({ page: 2 })))
+    expect(screen.getByTestId('page-number')).toHaveTextContent('1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'change-query' }))
+    await waitFor(() => expect(fetchData).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })))
+    expect(screen.getByTestId('page-number')).toHaveTextContent('0')
   })
 })

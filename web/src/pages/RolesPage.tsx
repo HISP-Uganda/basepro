@@ -17,9 +17,10 @@ import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { getAuthSnapshot } from '../auth/state'
 import { isApiError } from '../auth/AuthProvider'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
+import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { apiRequest } from '../lib/api'
-import { buildListQuery, type PaginatedResponse } from '../lib/pagination'
+import type { PaginatedResponse } from '../lib/pagination'
 import { useSnackbar } from '../ui/snackbar'
 
 interface RoleRow {
@@ -91,6 +92,7 @@ export function RolesPage() {
     const user = getAuthSnapshot().user
     return Boolean(user?.permissions.some((permission) => permission.trim().toLowerCase() === 'users.write'))
   }, [])
+  const { searchInput, setSearchInput, search } = useAdminListSearch()
 
   const [reloadToken, setReloadToken] = React.useState(0)
   const [permissionOptions, setPermissionOptions] = React.useState<PermissionRow[]>([])
@@ -135,13 +137,13 @@ export function RolesPage() {
   }, [canRead, loadPermissions])
 
   const fetchRoles = React.useCallback(async (params: AppDataGridFetchParams) => {
-    const query = buildListQuery(params)
+    const query = buildAdminListRequestQuery(params, { search })
     const payload = await apiRequest<PaginatedResponse<RoleRow>>(`/admin/roles?${query}`)
     return {
       rows: Array.isArray(payload.items) ? payload.items : [],
       total: typeof payload.totalCount === 'number' ? payload.totalCount : 0,
     }
-  }, [])
+  }, [search])
 
   const loadRoleDetail = React.useCallback(async (roleId: number, includeUsers: boolean) => {
     const includeQuery = includeUsers ? 'true' : 'false'
@@ -301,12 +303,21 @@ export function RolesPage() {
         </Button>
       </Box>
 
+      <TextField
+        label="Search"
+        placeholder="Search roles by name"
+        value={searchInput}
+        onChange={(event) => setSearchInput(event.target.value)}
+        sx={{ maxWidth: 360 }}
+      />
+
       <Box sx={{ height: 620, width: '100%', minWidth: 0, overflow: 'hidden' }}>
         <AppDataGrid
           columns={columns}
           fetchData={fetchRoles}
           storageKey="roles-table"
           reloadToken={reloadToken}
+          externalQueryKey={search}
           enablePinnedColumns
           stickyRightFields={['actions']}
         />

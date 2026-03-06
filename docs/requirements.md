@@ -634,4 +634,13 @@ The scope is platform administration only and must remain domain-agnostic.
   - web/frontend route tests passing
   - `docs/status.md` updated with completion evidence
 
+### 13.10 Admin DataGrid Search Contract
+- Administrative list endpoints and clients must use a consistent search/query contract:
+  - `page` and `pageSize` for pagination
+  - `sort=<field>:<asc|desc>` for server sorting
+  - `filter=<field>:<value>` for DataGrid column filter passthrough
+  - `q=<text>` for page-level quick search
+- Backend should apply `q` server-side and preserve backward compatibility for legacy filter-only requests where practical.
+- Desktop and web admin pages should debounce quick search input, compose `q` with pagination/sort/filter, and reset page to 1 when search text changes.
+
 # END (Authoritative)

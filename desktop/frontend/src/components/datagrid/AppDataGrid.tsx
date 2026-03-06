@@ -54,6 +54,7 @@ interface AppDataGridProps<R extends GridValidRowModel = GridValidRowModel> {
   getRowId?: (row: R) => string | number
   settingsStore?: SettingsStore
   reloadToken?: number
+  externalQueryKey?: string
   stickyRightFields?: string[]
   pinActionsToRight?: boolean
 }
@@ -171,6 +172,7 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
   getRowId,
   settingsStore,
   reloadToken,
+  externalQueryKey,
   stickyRightFields,
   pinActionsToRight,
 }: AppDataGridProps<R>) {
@@ -276,6 +278,7 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
       sortModel,
       filterModel,
       reloadToken: reloadToken ?? null,
+      externalQueryKey: externalQueryKey ?? null,
     })
     if (fetchKey === lastFetchKeyRef.current) {
       return
@@ -305,7 +308,14 @@ export function AppDataGrid<R extends GridValidRowModel = GridValidRowModel>({
           setLoading(false)
         }
       })
-  }, [fetchData, filterModel, hydrated, paginationModel.page, paginationModel.pageSize, reloadToken, sortModel])
+  }, [externalQueryKey, fetchData, filterModel, hydrated, paginationModel.page, paginationModel.pageSize, reloadToken, sortModel])
+
+  React.useEffect(() => {
+    if (!hydrated) {
+      return
+    }
+    setPaginationModel((current) => (current.page === 0 ? current : { ...current, page: 0 }))
+  }, [externalQueryKey, hydrated])
 
   const orderedColumns = React.useMemo(() => applyColumnOrder(columns, columnOrder), [columns, columnOrder])
 

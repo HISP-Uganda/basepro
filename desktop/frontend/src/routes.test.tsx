@@ -900,9 +900,8 @@ describe('app shell routes', () => {
     expect(await screen.findByRole('heading', { name: 'Permissions', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText('users.read')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), { target: { value: 'users' } })
-    fireEvent.change(screen.getByRole('textbox', { name: 'Module Scope' }), { target: { value: 'admin' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    fireEvent.change(screen.getByPlaceholderText('e.g. users.read'), { target: { value: 'users' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. admin'), { target: { value: 'admin' } })
 
     await waitFor(() => {
       expect(permissionUrls.some((url) => url.includes('q=users'))).toBe(true)

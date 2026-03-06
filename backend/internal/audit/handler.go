@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"basepro/backend/internal/apperror"
+	"basepro/backend/internal/listquery"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,14 +21,30 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "25"))
-	sortField, sortOrder := parseSortQuery(c.Query("sort"))
-	filterField, filterValue := parseFilterQuery(c.Query("filter"))
+	page, err := listquery.ParseInt(c.Query("page"), 1, 1, 100000, "page")
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"page": []string{err.Error()}}))
+		return
+	}
+	pageSize, err := listquery.ParseInt(c.Query("pageSize"), 25, 1, 200, "pageSize")
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"pageSize": []string{err.Error()}}))
+		return
+	}
+	sortField, sortOrder, err := listquery.ParseSort(c.Query("sort"))
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"sort": []string{err.Error()}}))
+		return
+	}
+	filterField, filterValue, err := listquery.ParseFilter(c.Query("filter"))
+	if err != nil {
+		apperror.Write(c, apperror.ValidationWithDetails("validation failed", map[string]any{"filter": []string{err.Error()}}))
+		return
+	}
 
 	action := strings.TrimSpace(c.Query("action"))
 	if action == "" {
-		action = filterForAudit(filterField, filterValue)
+		action = listquery.ResolveSearch(c.Query("q"), filterField, filterValue, map[string]struct{}{"action": {}})
 	}
 
 	var actorUserID *int64
@@ -107,38 +124,4 @@ func parseDateQuery(raw string) (*time.Time, error) {
 		return &t, nil
 	}
 	return nil, errors.New("invalid date format")
-}
-
-func parseSortQuery(raw string) (field string, order string) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", ""
-	}
-	parts := strings.SplitN(value, ":", 2)
-	if len(parts) == 1 {
-		return strings.TrimSpace(parts[0]), "asc"
-	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-}
-
-func parseFilterQuery(raw string) (field string, value string) {
-	filter := strings.TrimSpace(raw)
-	if filter == "" {
-		return "", ""
-	}
-	parts := strings.SplitN(filter, ":", 2)
-	if len(parts) == 1 {
-		return "", strings.TrimSpace(parts[0])
-	}
-	return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-}
-
-func filterForAudit(field, value string) string {
-	if strings.TrimSpace(value) == "" {
-		return ""
-	}
-	if field == "" || field == "action" {
-		return value
-	}
-	return ""
 }

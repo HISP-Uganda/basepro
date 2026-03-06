@@ -1,5 +1,56 @@
 # Status
 
+## Milestone F — Admin DataGrid Search Contract Standardization (Complete)
+
+### What changed
+- Standardized backend admin list query handling for Users, Roles, Permissions, and Audit endpoints:
+  - shared query parsing/validation helper added at `backend/internal/listquery/query.go`
+  - `q` quick-search parameter now supported consistently across admin list handlers
+  - legacy `filter` fallback preserved for backward compatibility
+  - validation added for malformed `page`, `pageSize`, `sort`, and `filter` query parameters
+- Aligned backend list handlers to avoid silently ignoring malformed query params and return typed validation errors.
+- Added backend endpoint coverage for search/filter contract behavior:
+  - users list `q` handling and invalid sort validation
+  - roles list `q` handling and invalid sort validation
+  - audit list `q` handling and invalid page validation
+- Added reusable admin search utilities in desktop and web:
+  - `useAdminListSearch` (debounced local search state)
+  - `buildAdminListRequestQuery` (predictable `q` + composed list params)
+- Updated desktop admin DataGrid pages (`Users`, `Roles`, `Permissions`, `Audit`) to use the shared search utility and send a consistent composed query contract.
+- Updated web admin DataGrid pages (`Users`, `Roles`, `Permissions`, `Audit`) to use the same search contract and behavior parity with desktop.
+- Added grid-level page-reset behavior when search/filter query key changes:
+  - `AppDataGrid` now supports `externalQueryKey`
+  - changing search terms resets pagination to page 1
+- Added/updated frontend tests for:
+  - page reset on search query changes (desktop/web `AppDataGrid` tests)
+  - permissions search wiring without manual apply button
+  - continued search + sort + pagination interaction coverage through existing route/page tests.
+- Saved prompt copy to `docs/prompts/2026-03-06-milestone-admin-datagrid-search-contract.md` (gitignored).
+
+### Standardized contract summary
+- Request params:
+  - `page`, `pageSize`
+  - `sort=<field>:<asc|desc>`
+  - `filter=<field>:<value>` (DataGrid column filter passthrough)
+  - `q=<text>` (quick search)
+- Behavior:
+  - search input updates local state
+  - debounced `q` request updates
+  - search changes reset page to 1
+  - search/sort/pagination/filter compose in one request
+  - backend applies search server-side and validates malformed query values.
+
+### Tests and verification
+- Backend tests:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...` -> PASS
+- Desktop frontend tests:
+  - `cd desktop/frontend && npm test -- --run` -> PASS
+- Web frontend tests:
+  - `cd web && npm test -- --run` -> PASS
+
+### Known follow-ups
+- Existing non-blocking jsdom/MUI `anchorEl` warnings remain in desktop/web frontend test logs; behavior and assertions pass.
+
 ## Milestone E — Administration UX Refinement (Navigation Dropdowns + Multi-Column Forms + Grid Pinning) (Complete)
 
 ### What changed

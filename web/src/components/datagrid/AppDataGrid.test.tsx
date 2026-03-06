@@ -8,6 +8,7 @@ vi.mock('@mui/x-data-grid', () => ({
   DataGrid: (props: Record<string, any>) => (
     <div>
       <div data-testid="page-size">{String(props.paginationModel.pageSize)}</div>
+      <div data-testid="page-number">{String(props.paginationModel.page)}</div>
       <div data-testid="density">{String(props.density)}</div>
       <div data-testid="username-visible">{String(props.columnVisibilityModel?.username ?? true)}</div>
       <div data-testid="first-column">{String(props.columns?.[0]?.field ?? '')}</div>
@@ -50,6 +51,26 @@ vi.mock('@mui/x-data-grid', () => ({
 function renderGrid(fetchData: (params: any) => Promise<any>, storageKey = 'users-table', enablePinnedColumns = false) {
   return render(
     <SnackbarProvider>
+      <StatefulGrid fetchData={fetchData} storageKey={storageKey} enablePinnedColumns={enablePinnedColumns} />
+    </SnackbarProvider>,
+  )
+}
+
+function StatefulGrid({
+  fetchData,
+  storageKey,
+  enablePinnedColumns,
+}: {
+  fetchData: (params: any) => Promise<any>
+  storageKey: string
+  enablePinnedColumns: boolean
+}) {
+  const [queryKey, setQueryKey] = React.useState('initial')
+  return (
+    <>
+      <button type="button" onClick={() => setQueryKey('changed')}>
+        change-query
+      </button>
       <AppDataGrid
         storageKey={storageKey}
         columns={[
@@ -59,8 +80,9 @@ function renderGrid(fetchData: (params: any) => Promise<any>, storageKey = 'user
         ]}
         fetchData={fetchData}
         enablePinnedColumns={enablePinnedColumns}
+        externalQueryKey={queryKey}
       />
-    </SnackbarProvider>,
+    </>
   )
 }
 
@@ -172,5 +194,20 @@ describe('AppDataGrid', () => {
       expect(fetchData).toHaveBeenCalled()
       expect(screen.getByTestId('pinned-right')).toHaveTextContent('actions')
     })
+  })
+
+  it('resets pagination to page 1 when external query key changes', async () => {
+    const fetchData = vi.fn(async () => ({ rows: [], total: 0 }))
+    renderGrid(fetchData)
+
+    await waitFor(() => expect(fetchData).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })))
+
+    fireEvent.click(screen.getByRole('button', { name: 'next-page' }))
+    await waitFor(() => expect(fetchData).toHaveBeenCalledWith(expect.objectContaining({ page: 2 })))
+    expect(screen.getByTestId('page-number')).toHaveTextContent('1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'change-query' }))
+    await waitFor(() => expect(fetchData).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })))
+    expect(screen.getByTestId('page-number')).toHaveTextContent('0')
   })
 })
