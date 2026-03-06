@@ -1,5 +1,38 @@
 # Status
 
+## Milestone — Registry-First Module Extension Workflow (Documentation) (Complete)
+
+### What changed
+- Added module-extension guidance note:
+  - `docs/notes/module-registry.md`
+- Documented a concrete registry-first workflow for adding modules across:
+  - desktop registry files (`modules.ts`, `navigation.ts`, `permissions.ts`)
+  - web registry files (`modules.ts`, `navigation.ts`, `permissions.ts`)
+  - backend RBAC registry/constants (`backend/internal/rbac/registry.go`)
+- Added educational/reference-only examples for:
+  - module definition entry
+  - navigation entry
+  - permission entries
+  - backend endpoint permission guard mapping
+- Explicitly marked all examples as non-runtime reference scaffolding (not an implemented module).
+- Saved prompt traceability copy:
+  - `docs/prompts/2026-03-06-module-registry-workflow-scaffold.md` (gitignored, not for commit)
+
+### Documentation coverage
+- How to define a module in module registries.
+- How to define navigation entries with grouped/RBAC-aware visibility.
+- How to define permission keys/metadata with consistent naming.
+- How backend endpoints align to permission keys and middleware guards.
+- How to preserve desktop/web parity for shared modules.
+- What to record in `docs/status.md` for module milestones.
+
+### Tests and verification
+- Verified guidance against current implemented registry structure in:
+  - `desktop/frontend/src/registry/*`
+  - `web/src/registry/*`
+  - `backend/internal/rbac/registry.go`
+- No runtime code changed in this milestone (documentation-only), so no additional backend/desktop/web test run was required.
+
 ## Milestone — Registry-First Module Foundation (Implementation) (Complete)
 
 ### What changed
