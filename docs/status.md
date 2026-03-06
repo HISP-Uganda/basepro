@@ -1,5 +1,59 @@
 # Status
 
+## Milestone D — Web RBAC Administration Parity + Users Multi-Role UX (Complete)
+
+### What changed
+- Implemented web `/roles` page using shared admin patterns:
+  - server-backed roles list with `AppDataGrid`
+  - create role dialog
+  - edit role dialog (name + permissions update)
+  - role details dialog (assigned permissions + assigned users)
+  - row action menu wired through shared `AdminRowActions`
+- Implemented web `/permissions` page using shared admin patterns:
+  - server-backed permissions list with `AppDataGrid`
+  - search (`q`) and module-scope filtering (`moduleScope`)
+  - permission details dialog
+  - permission metadata viewer via shared JSON metadata dialog
+- Extended web `/users` create/edit flows for multi-role assignment:
+  - added API-driven MUI `Autocomplete` multi-select + chips for role assignment in both create and edit dialogs
+  - included role arrays in create/update payloads
+  - mapped backend `VALIDATION_ERROR` role-field errors (`details.roles`) to form helper text
+- Improved web users role visibility UX:
+  - added explicit `Roles` column in users grid with chips
+  - added user details dialog that clearly shows assigned roles and key metadata
+- Preserved permission-based action visibility/enablement and existing auth/session-expiry behavior via shared `apiRequest` + `AuthProvider`.
+- Saved prompt copy to `docs/prompts/2026-03-06-milestone-d-web-rbac-parity.md` (gitignored).
+
+### API endpoints consumed (web)
+- `GET /api/v1/users`
+- `POST /api/v1/users`
+- `PATCH /api/v1/users/:id`
+- `GET /api/v1/admin/roles`
+- `POST /api/v1/admin/roles`
+- `GET /api/v1/admin/roles/:id?includeUsers=true|false`
+- `PATCH /api/v1/admin/roles/:id`
+- `GET /api/v1/admin/permissions`
+
+### Tests and build
+- Backend tests:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...`
+- Desktop frontend tests:
+  - `cd desktop/frontend && npm test -- --run`
+- Web frontend tests:
+  - `cd web && npm test -- --run`
+- Web build:
+  - `cd web && npm run build`
+
+### Verification summary
+- Backend tests: PASS
+- Desktop frontend tests: PASS
+- Web frontend tests: PASS (including new role/permission route smoke coverage, users role multi-select behavior, and admin action-menu flow coverage)
+- Web build: PASS
+
+### Parity notes
+- Web now matches desktop for reusable RBAC administration capabilities across `/roles`, `/permissions`, and users multi-role create/edit flows.
+- Remaining runtime test/build warnings are unchanged non-blocking MUI jsdom `anchorEl` warnings and Vite third-party `'use client'`/chunk-size warnings.
+
 ## Milestone C — Desktop RBAC Administration Pages + User Multi-Role UX (Complete)
 
 ### What changed

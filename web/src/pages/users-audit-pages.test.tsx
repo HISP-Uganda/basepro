@@ -94,9 +94,20 @@ describe('users and audit pages', () => {
     apiRequestSpy.mockRestore()
   })
 
-  it('/users renders metadata columns and values from mocked API', async () => {
+  it('/users renders metadata columns and assigned roles from mocked API', async () => {
     authenticate(['users.read', 'audit.read', 'settings.read', 'users.write'])
     apiRequestSpy.mockImplementation(async (path: string) => {
+      if (path.includes('/admin/roles?')) {
+        return {
+          items: [
+            { id: 1, name: 'Admin' },
+            { id: 2, name: 'Viewer' },
+          ],
+          totalCount: 2,
+          page: 1,
+          pageSize: 200,
+        }
+      }
       if (path.includes('/users?')) {
         return {
           items: [
@@ -112,6 +123,7 @@ describe('users and audit pages', () => {
               whatsappNumber: '+15557654321',
               telegramHandle: '@alice',
               isActive: true,
+              roles: ['Admin', 'Viewer'],
               updatedAt: '2026-03-01T12:00:00Z',
               createdAt: '2026-03-01T10:00:00Z',
             },
@@ -127,23 +139,29 @@ describe('users and audit pages', () => {
     renderRoute('/users')
 
     expect(await screen.findByRole('heading', { name: 'Users', level: 1 })).toBeInTheDocument()
-    expect(screen.getByText('Display Name')).toBeInTheDocument()
-    expect(screen.getByText('Language')).toBeInTheDocument()
-    expect(screen.getByText('Email')).toBeInTheDocument()
-    expect(screen.getByText('Phone Number')).toBeInTheDocument()
-    expect(screen.getByText('WhatsApp Number')).toBeInTheDocument()
-    expect(screen.getByText('Telegram Handle')).toBeInTheDocument()
-    expect(screen.getByText('Updated')).toBeInTheDocument()
+    expect(screen.getAllByText('Roles').length).toBeGreaterThan(0)
+    expect(await screen.findByText('Admin')).toBeInTheDocument()
+    expect(await screen.findByText('Viewer')).toBeInTheDocument()
     expect(await screen.findByText('Alice Johnson')).toBeInTheDocument()
     expect(screen.getByText('alice@example.com')).toBeInTheDocument()
-    expect(await screen.findByText('alice')).toBeInTheDocument()
     await waitFor(() => expect(apiRequestSpy).toHaveBeenCalledWith(expect.stringContaining('/users?')))
   })
 
-  it('create user submits expected metadata payload', async () => {
+  it('create user supports role multi-select and submits selected roles', async () => {
     authenticate(['users.read', 'users.write', 'audit.read'])
     let createPayload: Record<string, unknown> | null = null
     apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/admin/roles?')) {
+        return {
+          items: [
+            { id: 1, name: 'Admin' },
+            { id: 2, name: 'Viewer' },
+          ],
+          totalCount: 2,
+          page: 1,
+          pageSize: 200,
+        }
+      }
       if (path.includes('/users?') && (!init?.method || init.method === 'GET')) {
         return {
           items: [],
@@ -168,36 +186,39 @@ describe('users and audit pages', () => {
     const passwordInput = dialog.querySelector('input[type="password"]')
     expect(passwordInput).not.toBeNull()
     fireEvent.change(passwordInput as Element, { target: { value: 'TempPass123!' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Email' }), { target: { value: 'new-user@example.com' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Language' }), { target: { value: 'French' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'First Name' }), { target: { value: 'New' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Last Name' }), { target: { value: 'User' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Display Name' }), { target: { value: 'New User' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Phone Number' }), { target: { value: '+15550000001' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'WhatsApp Number' }), { target: { value: '+15550000002' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Telegram Handle' }), { target: { value: '@new_user' } })
+
+    const rolesInput = within(dialog).getByRole('combobox', { name: 'Roles' })
+    fireEvent.mouseDown(rolesInput)
+    fireEvent.change(rolesInput, { target: { value: 'Admin' } })
+    fireEvent.click(await screen.findByRole('option', { name: 'Admin' }))
+
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }))
 
     await waitFor(() => expect(createPayload).not.toBeNull())
     expect(createPayload).toMatchObject({
       username: 'new-user',
       password: 'TempPass123!',
-      email: 'new-user@example.com',
-      language: 'French',
-      firstName: 'New',
-      lastName: 'User',
-      displayName: 'New User',
-      phoneNumber: '+15550000001',
-      whatsappNumber: '+15550000002',
-      telegramHandle: '@new_user',
+      roles: ['Admin'],
       isActive: true,
     })
   })
 
-  it('edit user submits metadata payload and omits password when empty', async () => {
+  it('edit user supports role multi-select and updates selected roles', async () => {
     authenticate(['users.read', 'users.write', 'audit.read'])
     let patchPayload: Record<string, unknown> | null = null
     apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/admin/roles?')) {
+        return {
+          items: [
+            { id: 1, name: 'Admin' },
+            { id: 2, name: 'Viewer' },
+            { id: 3, name: 'Manager' },
+          ],
+          totalCount: 3,
+          page: 1,
+          pageSize: 200,
+        }
+      }
       if (path.includes('/users?') && (!init?.method || init.method === 'GET')) {
         return {
           items: [
@@ -213,6 +234,7 @@ describe('users and audit pages', () => {
               whatsappNumber: '+15551234568',
               telegramHandle: '@janedoe',
               isActive: true,
+              roles: ['Viewer'],
               updatedAt: '2026-03-01T12:00:00Z',
               createdAt: '2026-03-01T10:00:00Z',
             },
@@ -235,30 +257,82 @@ describe('users and audit pages', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Edit User' })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Email' }), { target: { value: 'jane-updated@example.com' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Display Name' }), { target: { value: 'Jane Updated' } })
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Phone Number' }), { target: { value: '+15559876543' } })
+    const rolesInput = within(dialog).getByRole('combobox', { name: 'Roles' })
+    fireEvent.mouseDown(rolesInput)
+    fireEvent.change(rolesInput, { target: { value: 'Admin' } })
+    fireEvent.click(await screen.findByRole('option', { name: 'Admin' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(patchPayload).not.toBeNull())
     expect(patchPayload).toMatchObject({
       username: 'jane',
-      email: 'jane-updated@example.com',
-      language: 'English',
-      firstName: 'Jane',
-      lastName: 'Doe',
-      displayName: 'Jane Updated',
-      phoneNumber: '+15559876543',
-      whatsappNumber: '+15551234568',
-      telegramHandle: '@janedoe',
-      isActive: true,
+      roles: ['Viewer', 'Admin'],
     })
-    expect(patchPayload).not.toHaveProperty('password')
+  })
+
+  it('users action menu supports details view and deactivate confirmation flow', async () => {
+    authenticate(['users.read', 'users.write'])
+    let deactivatePayload: Record<string, unknown> | null = null
+    apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/admin/roles?')) {
+        return { items: [], totalCount: 0, page: 1, pageSize: 200 }
+      }
+      if (path.includes('/users?') && (!init?.method || init.method === 'GET')) {
+        return {
+          items: [
+            {
+              id: 11,
+              username: 'mark',
+              language: 'English',
+              email: 'mark@example.com',
+              isActive: true,
+              roles: ['Admin'],
+              updatedAt: '2026-03-01T12:00:00Z',
+              createdAt: '2026-03-01T10:00:00Z',
+            },
+          ],
+          totalCount: 1,
+          page: 1,
+          pageSize: 25,
+        }
+      }
+      if (path.endsWith('/users/11') && init?.method === 'PATCH') {
+        deactivatePayload = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>
+        return { id: 11, username: 'mark' }
+      }
+      return {}
+    })
+
+    renderRoute('/users')
+    expect(await screen.findByRole('heading', { name: 'Users', level: 1 })).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for mark' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'View Details' }))
+    const detailsDialog = await screen.findByRole('dialog', { name: 'User Details' })
+    expect(within(detailsDialog).getAllByText('mark').length).toBeGreaterThan(0)
+    expect(within(detailsDialog).getByText('Admin')).toBeInTheDocument()
+    fireEvent.click(within(detailsDialog).getByRole('button', { name: 'Close' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for mark' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Deactivate' }))
+    expect(await screen.findByRole('dialog', { name: 'Deactivate user' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    await waitFor(() => expect(deactivatePayload).not.toBeNull())
+    expect(deactivatePayload).toEqual({ isActive: false })
   })
 
   it('validation error displays field messages and request ID', async () => {
     authenticate(['users.read', 'users.write'])
     apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/admin/roles?')) {
+        return {
+          items: [{ id: 1, name: 'Admin' }],
+          totalCount: 1,
+          page: 1,
+          pageSize: 200,
+        }
+      }
       if (path.includes('/users?') && (!init?.method || init.method === 'GET')) {
         return {
           items: [],
@@ -279,6 +353,7 @@ describe('users and audit pages', () => {
         error.details = {
           email: ['must be a valid email address'],
           phoneNumber: ['must be E.164 format, e.g. +15551234567'],
+          roles: ['contains unknown role identifier'],
         }
         error.requestId = 'req-users-422'
         throw error
@@ -301,7 +376,148 @@ describe('users and audit pages', () => {
 
     expect(await within(dialog).findByText('must be a valid email address')).toBeInTheDocument()
     expect(within(dialog).getByText('must be E.164 format, e.g. +15551234567')).toBeInTheDocument()
+    expect(within(dialog).getByText('contains unknown role identifier')).toBeInTheDocument()
     expect(within(dialog).getByText('validation failed Request ID: req-users-422')).toBeInTheDocument()
+  })
+
+  it('/roles supports list/create/edit/detail flows', async () => {
+    authenticate(['users.read', 'users.write'])
+    let createPayload: Record<string, unknown> | null = null
+    let updatePayload: Record<string, unknown> | null = null
+
+    apiRequestSpy.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.includes('/admin/permissions?')) {
+        return {
+          items: [
+            { id: 1, name: 'users.read', moduleScope: 'admin', createdAt: '2026-03-01T00:00:00Z' },
+            { id: 2, name: 'users.write', moduleScope: 'admin', createdAt: '2026-03-01T00:00:00Z' },
+          ],
+          totalCount: 2,
+          page: 1,
+          pageSize: 200,
+        }
+      }
+      if (path.includes('/admin/roles/2?includeUsers=false')) {
+        return {
+          id: 2,
+          name: 'Manager',
+          permissions: [{ id: 1, name: 'users.read', moduleScope: 'admin', createdAt: '2026-03-01T00:00:00Z' }],
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z',
+        }
+      }
+      if (path.includes('/admin/roles/2?includeUsers=true')) {
+        return {
+          id: 2,
+          name: 'Manager',
+          permissions: [{ id: 1, name: 'users.read', moduleScope: 'admin', createdAt: '2026-03-01T00:00:00Z' }],
+          users: [{ id: 42, username: 'alice', isActive: true }],
+          createdAt: '2026-03-01T00:00:00Z',
+          updatedAt: '2026-03-01T00:00:00Z',
+        }
+      }
+      if (path.includes('/admin/roles?') && (!init?.method || init.method === 'GET')) {
+        return {
+          items: [
+            {
+              id: 2,
+              name: 'Manager',
+              permissionCount: 1,
+              userCount: 1,
+              createdAt: '2026-03-01T00:00:00Z',
+              updatedAt: '2026-03-02T00:00:00Z',
+            },
+          ],
+          totalCount: 1,
+          page: 1,
+          pageSize: 25,
+        }
+      }
+      if (path.endsWith('/admin/roles') && init?.method === 'POST') {
+        createPayload = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>
+        return { id: 3, name: 'Support' }
+      }
+      if (path.endsWith('/admin/roles/2') && init?.method === 'PATCH') {
+        updatePayload = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>
+        return { id: 2, name: 'Manager Updated' }
+      }
+      return {}
+    })
+
+    renderRoute('/roles')
+
+    expect(await screen.findByRole('heading', { name: 'Roles', level: 1 })).toBeInTheDocument()
+    expect(await screen.findByText('Manager')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Role' }))
+    const createDialog = await screen.findByRole('dialog', { name: 'Create Role' })
+    fireEvent.change(within(createDialog).getByRole('textbox', { name: 'Role Name' }), { target: { value: 'Support' } })
+    fireEvent.click(within(createDialog).getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(createPayload).not.toBeNull())
+    expect(createPayload).toEqual({ name: 'Support', permissions: [] })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Manager' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit Role' }))
+    const editDialog = await screen.findByRole('dialog', { name: 'Edit Role' })
+    fireEvent.change(within(editDialog).getByRole('textbox', { name: 'Role Name' }), { target: { value: 'Manager Updated' } })
+    fireEvent.click(within(editDialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(updatePayload).not.toBeNull())
+    expect(updatePayload).toMatchObject({ name: 'Manager Updated' })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Manager' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'View Details' }))
+    expect(await screen.findByRole('dialog', { name: 'Role Details' })).toBeInTheDocument()
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(apiRequestSpy).toHaveBeenCalledWith(expect.stringContaining('/admin/roles/2?includeUsers=true'))
+    })
+  })
+
+  it('/permissions supports list/filter/details flows', async () => {
+    authenticate(['users.read'])
+    apiRequestSpy.mockImplementation(async (path: string) => {
+      if (path.includes('/admin/permissions?')) {
+        return {
+          items: [
+            {
+              id: 4,
+              name: 'users.read',
+              moduleScope: 'admin',
+              createdAt: '2026-03-01T00:00:00Z',
+            },
+          ],
+          totalCount: 1,
+          page: 1,
+          pageSize: 25,
+        }
+      }
+      return {}
+    })
+
+    renderRoute('/permissions')
+
+    expect(await screen.findByRole('heading', { name: 'Permissions', level: 1 })).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), { target: { value: 'users' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Module Scope' }), { target: { value: 'admin' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() => {
+      expect(apiRequestSpy).toHaveBeenCalledWith(expect.stringContaining('/admin/permissions?'))
+      const calls = apiRequestSpy.mock.calls.map((call) => String(call[0]))
+      expect(calls.some((call) => call.includes('q=users'))).toBe(true)
+      expect(calls.some((call) => call.includes('moduleScope=admin'))).toBe(true)
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for users.read' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'View Details' }))
+    expect(await screen.findByRole('dialog', { name: 'Permission Details' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for users.read' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'View Metadata' }))
+    expect(await screen.findByRole('dialog', { name: 'Audit Metadata' })).toBeInTheDocument()
   })
 
   it('/audit renders mocked API rows', async () => {
@@ -325,7 +541,7 @@ describe('users and audit pages', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Actions for auth.login.success' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'View Metadata' }))
     expect(await screen.findByRole('dialog', { name: 'Audit Metadata' })).toBeInTheDocument()
-    expect(screen.getByText(/\"ip\": \"127.0.0.1\"/)).toBeInTheDocument()
+    expect(screen.getByText(/"ip": "127.0.0.1"/)).toBeInTheDocument()
     await waitFor(() => expect(apiRequestSpy).toHaveBeenCalledWith(expect.stringContaining('/audit?')))
   })
 })

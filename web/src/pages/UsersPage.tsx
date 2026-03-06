@@ -1,11 +1,25 @@
 import React from 'react'
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Switch, TextField, Typography } from '@mui/material'
+import {
+  Alert,
+  Autocomplete,
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { getAuthSnapshot } from '../auth/state'
+import { isApiError } from '../auth/AuthProvider'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { apiRequest } from '../lib/api'
-import { isApiError } from '../auth/AuthProvider'
 import { buildListQuery, type PaginatedResponse } from '../lib/pagination'
 import { useSnackbar } from '../ui/snackbar'
 
@@ -21,8 +35,14 @@ interface UserRow {
   whatsappNumber?: string
   telegramHandle?: string
   isActive: boolean
+  roles: string[]
   updatedAt: string
   createdAt: string
+}
+
+interface RoleOption {
+  id: number
+  name: string
 }
 
 interface UserFormState {
@@ -39,7 +59,7 @@ interface UserFormState {
   isActive: boolean
 }
 
-type UserFormErrors = Partial<Record<keyof UserFormState, string>>
+type UserFormErrors = Partial<Record<keyof UserFormState | 'roles', string>>
 
 const defaultCreateForm: UserFormState = {
   username: '',
@@ -65,6 +85,14 @@ function displayNameForRow(row: UserRow) {
   }
   const derived = [row.firstName, row.lastName].filter((value) => value && value.trim()).join(' ').trim()
   return derived || row.username
+}
+
+function formatDate(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.valueOf())) {
+    return value
+  }
+  return parsed.toLocaleString()
 }
 
 function toUserForm(row: UserRow): UserFormState {
@@ -111,6 +139,7 @@ function validationFieldErrors(error: unknown): UserFormErrors {
     phoneNumber: toFieldError(details.phoneNumber),
     whatsappNumber: toFieldError(details.whatsappNumber),
     telegramHandle: toFieldError(details.telegramHandle),
+    roles: toFieldError(details.roles),
     isActive: '',
   }
 }
@@ -122,28 +151,79 @@ function toRequestErrorMessage(error: unknown, fallback: string) {
   return error.requestId ? `${error.message} Request ID: ${error.requestId}` : error.message
 }
 
+function renderRoleChips(roles: string[]) {
+  if (!roles.length) {
+    return <Typography color="text.secondary">No roles assigned</Typography>
+  }
+  return (
+    <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap" sx={{ py: 0.25 }}>
+      {roles.map((role) => (
+        <Chip key={role} label={role} size="small" variant="outlined" />
+      ))}
+    </Stack>
+  )
+}
+
 export function UsersPage() {
   const { showSnackbar } = useSnackbar()
   const canWrite = React.useMemo(() => {
     const user = getAuthSnapshot().user
     return Boolean(user?.permissions.some((permission) => permission.trim().toLowerCase() === 'users.write'))
   }, [])
+  const canReadRoles = React.useMemo(() => {
+    const user = getAuthSnapshot().user
+    if (!user) {
+      return false
+    }
+    return user.permissions.some((permission) => {
+      const normalized = permission.trim().toLowerCase()
+      return normalized === 'users.read' || normalized === 'users.write'
+    })
+  }, [])
 
   const [reloadToken, setReloadToken] = React.useState(0)
+  const [roleOptions, setRoleOptions] = React.useState<RoleOption[]>([])
+  const [loadingRoleOptions, setLoadingRoleOptions] = React.useState(false)
 
   const [createOpen, setCreateOpen] = React.useState(false)
   const [createForm, setCreateForm] = React.useState<UserFormState>(defaultCreateForm)
+  const [createRoles, setCreateRoles] = React.useState<string[]>([])
   const [createErrors, setCreateErrors] = React.useState<UserFormErrors>({})
   const [createErrorMessage, setCreateErrorMessage] = React.useState('')
 
   const [editOpen, setEditOpen] = React.useState(false)
   const [editUser, setEditUser] = React.useState<UserRow | null>(null)
   const [editForm, setEditForm] = React.useState<UserFormState>(defaultCreateForm)
+  const [editRoles, setEditRoles] = React.useState<string[]>([])
   const [editErrors, setEditErrors] = React.useState<UserFormErrors>({})
   const [editErrorMessage, setEditErrorMessage] = React.useState('')
+
+  const [detailsOpen, setDetailsOpen] = React.useState(false)
+  const [detailsUser, setDetailsUser] = React.useState<UserRow | null>(null)
+
   const [submitting, setSubmitting] = React.useState(false)
 
   const refreshGrid = React.useCallback(() => setReloadToken((value) => value + 1), [])
+
+  const loadRoleOptions = React.useCallback(async () => {
+    if (!canReadRoles) {
+      return
+    }
+    setLoadingRoleOptions(true)
+    try {
+      const payload = await apiRequest<PaginatedResponse<RoleOption>>('/admin/roles?page=1&pageSize=200&sort=name:asc')
+      setRoleOptions(Array.isArray(payload.items) ? payload.items : [])
+    } catch (error) {
+      setRoleOptions([])
+      showSnackbar({ severity: 'error', message: toRequestErrorMessage(error, 'Unable to load roles.') })
+    } finally {
+      setLoadingRoleOptions(false)
+    }
+  }, [canReadRoles, showSnackbar])
+
+  React.useEffect(() => {
+    void loadRoleOptions()
+  }, [loadRoleOptions])
 
   const fetchUsers = React.useCallback(async (params: AppDataGridFetchParams) => {
     const query = buildListQuery(params)
@@ -173,18 +253,22 @@ export function UsersPage() {
           whatsappNumber: createForm.whatsappNumber,
           telegramHandle: createForm.telegramHandle,
           isActive: createForm.isActive,
+          roles: createRoles,
         }),
       })
       showSnackbar({ severity: 'success', message: 'User created.' })
       setCreateOpen(false)
       setCreateForm(defaultCreateForm)
+      setCreateRoles([])
       refreshGrid()
     } catch (error) {
       const fieldErrors = validationFieldErrors(error)
       if (Object.values(fieldErrors).some((message) => Boolean(message))) {
         setCreateErrors(fieldErrors)
       }
-      setCreateErrorMessage(toRequestErrorMessage(error, 'Unable to create user.'))
+      const message = toRequestErrorMessage(error, 'Unable to create user.')
+      setCreateErrorMessage(message)
+      showSnackbar({ severity: 'error', message })
     } finally {
       setSubmitting(false)
     }
@@ -209,6 +293,7 @@ export function UsersPage() {
       whatsappNumber: editForm.whatsappNumber,
       telegramHandle: editForm.telegramHandle,
       isActive: editForm.isActive,
+      roles: editRoles,
     }
     if (editForm.password.trim()) {
       payload.password = editForm.password
@@ -223,13 +308,16 @@ export function UsersPage() {
       setEditOpen(false)
       setEditUser(null)
       setEditForm(defaultCreateForm)
+      setEditRoles([])
       refreshGrid()
     } catch (error) {
       const fieldErrors = validationFieldErrors(error)
       if (Object.values(fieldErrors).some((message) => Boolean(message))) {
         setEditErrors(fieldErrors)
       }
-      setEditErrorMessage(toRequestErrorMessage(error, 'Unable to update user.'))
+      const message = toRequestErrorMessage(error, 'Unable to update user.')
+      setEditErrorMessage(message)
+      showSnackbar({ severity: 'error', message })
     } finally {
       setSubmitting(false)
     }
@@ -251,6 +339,8 @@ export function UsersPage() {
     [refreshGrid, showSnackbar],
   )
 
+  const roleNames = React.useMemo(() => roleOptions.map((role) => role.name), [roleOptions])
+
   const columns = React.useMemo<GridColDef<UserRow>[]>(
     () => [
       { field: 'username', headerName: 'Username', minWidth: 150, flex: 1 },
@@ -260,6 +350,14 @@ export function UsersPage() {
         minWidth: 190,
         flex: 1,
         valueGetter: (_value, row) => displayNameForRow(row),
+      },
+      {
+        field: 'roles',
+        headerName: 'Roles',
+        minWidth: 220,
+        flex: 1,
+        sortable: false,
+        renderCell: (params: GridRenderCellParams<UserRow>) => renderRoleChips(params.row.roles ?? []),
       },
       { field: 'language', headerName: 'Language', minWidth: 140, valueGetter: (_value, row) => row.language ?? 'English' },
       { field: 'email', headerName: 'Email', minWidth: 220, flex: 1, valueGetter: (_value, row) => row.email ?? '' },
@@ -271,7 +369,7 @@ export function UsersPage() {
         field: 'updatedAt',
         headerName: 'Updated',
         minWidth: 185,
-        valueGetter: (_value, row) => new Date(row.updatedAt).toLocaleString(),
+        valueGetter: (_value, row) => formatDate(row.updatedAt),
       },
       {
         field: 'actions',
@@ -285,14 +383,11 @@ export function UsersPage() {
             actions={[
               {
                 id: 'view',
-                label: 'View',
+                label: 'View Details',
                 icon: 'view',
                 onClick: () => {
-                  setEditUser(params.row)
-                  setEditForm(toUserForm(params.row))
-                  setEditErrors({})
-                  setEditErrorMessage('')
-                  setEditOpen(true)
+                  setDetailsUser(params.row)
+                  setDetailsOpen(true)
                 },
               },
               {
@@ -303,6 +398,7 @@ export function UsersPage() {
                 onClick: () => {
                   setEditUser(params.row)
                   setEditForm(toUserForm(params.row))
+                  setEditRoles(params.row.roles ?? [])
                   setEditErrors({})
                   setEditErrorMessage('')
                   setEditOpen(true)
@@ -333,13 +429,14 @@ export function UsersPage() {
           <Typography variant="h5" component="h1" gutterBottom>
             Users
           </Typography>
-          <Typography color="text.secondary">Manage users and profile metadata.</Typography>
+          <Typography color="text.secondary">Manage users, profile metadata, and multi-role assignments.</Typography>
         </Box>
         {canWrite ? (
           <Button
             variant="contained"
             onClick={() => {
               setCreateForm(defaultCreateForm)
+              setCreateRoles([])
               setCreateErrors({})
               setCreateErrorMessage('')
               setCreateOpen(true)
@@ -447,6 +544,25 @@ export function UsersPage() {
               error={Boolean(createErrors.telegramHandle)}
               helperText={createErrors.telegramHandle}
               fullWidth
+            />
+            <Autocomplete
+              multiple
+              options={roleNames}
+              loading={loadingRoleOptions}
+              value={createRoles}
+              onChange={(_event, value) => setCreateRoles(value)}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => <Chip label={option} {...getTagProps({ index })} key={option} size="small" />)
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Roles"
+                  placeholder="Assign roles"
+                  error={Boolean(createErrors.roles)}
+                  helperText={createErrors.roles}
+                />
+              )}
             />
             <Stack direction="row" alignItems="center" spacing={1}>
               <Typography variant="body2">Active</Typography>
@@ -557,6 +673,25 @@ export function UsersPage() {
               helperText={editErrors.telegramHandle}
               fullWidth
             />
+            <Autocomplete
+              multiple
+              options={roleNames}
+              loading={loadingRoleOptions}
+              value={editRoles}
+              onChange={(_event, value) => setEditRoles(value)}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => <Chip label={option} {...getTagProps({ index })} key={option} size="small" />)
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Roles"
+                  placeholder="Assign roles"
+                  error={Boolean(editErrors.roles)}
+                  helperText={editErrors.roles}
+                />
+              )}
+            />
             <Stack direction="row" alignItems="center" spacing={1}>
               <Typography variant="body2">Active</Typography>
               <Switch
@@ -572,6 +707,47 @@ export function UsersPage() {
           <Button variant="contained" onClick={() => void onSaveEdit()} disabled={submitting || !editUser}>
             Save
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>User Details</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Username
+              </Typography>
+              <Typography>{detailsUser?.username ?? '-'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Display Name
+              </Typography>
+              <Typography>{detailsUser ? displayNameForRow(detailsUser) : '-'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Roles
+              </Typography>
+              {renderRoleChips(detailsUser?.roles ?? [])}
+            </Box>
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Status
+              </Typography>
+              <Typography>{detailsUser?.isActive ? 'Active' : 'Inactive'}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Updated
+              </Typography>
+              <Typography>{detailsUser ? formatDate(detailsUser.updatedAt) : '-'}</Typography>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailsOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
