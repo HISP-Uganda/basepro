@@ -16,13 +16,13 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { getAuthSnapshot } from '../auth/state'
-import { isApiError } from '../auth/AuthProvider'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
+import { handleAppError } from '../errors/handleAppError'
 import { apiRequest } from '../lib/api'
 import type { PaginatedResponse } from '../lib/pagination'
-import { useSnackbar } from '../ui/snackbar'
+import { useAppNotify } from '../notifications/facade'
 
 interface UserRow {
   id: number
@@ -112,44 +112,22 @@ function toUserForm(row: UserRow): UserFormState {
   }
 }
 
-function toFieldError(value: unknown) {
-  if (typeof value === 'string') {
-    return value
-  }
-  if (Array.isArray(value)) {
-    const first = value.find((entry) => typeof entry === 'string')
-    return typeof first === 'string' ? first : ''
-  }
-  return ''
-}
-
-function validationFieldErrors(error: unknown): UserFormErrors {
-  if (!isApiError(error) || error.code !== 'VALIDATION_ERROR' || !error.details || typeof error.details !== 'object') {
-    return {}
-  }
-
-  const details = error.details as Record<string, unknown>
+function mapValidationFieldErrors(details?: Record<string, string[]>): UserFormErrors {
+  const first = (key: string) => details?.[key]?.[0] ?? ''
   return {
-    username: toFieldError(details.username),
-    password: toFieldError(details.password),
-    email: toFieldError(details.email),
-    language: toFieldError(details.language),
-    firstName: toFieldError(details.firstName),
-    lastName: toFieldError(details.lastName),
-    displayName: toFieldError(details.displayName),
-    phoneNumber: toFieldError(details.phoneNumber),
-    whatsappNumber: toFieldError(details.whatsappNumber),
-    telegramHandle: toFieldError(details.telegramHandle),
-    roles: toFieldError(details.roles),
+    username: first('username'),
+    password: first('password'),
+    email: first('email'),
+    language: first('language'),
+    firstName: first('firstName'),
+    lastName: first('lastName'),
+    displayName: first('displayName'),
+    phoneNumber: first('phoneNumber'),
+    whatsappNumber: first('whatsappNumber'),
+    telegramHandle: first('telegramHandle'),
+    roles: first('roles'),
     isActive: '',
   }
-}
-
-function toRequestErrorMessage(error: unknown, fallback: string) {
-  if (!isApiError(error)) {
-    return fallback
-  }
-  return error.requestId ? `${error.message} Request ID: ${error.requestId}` : error.message
 }
 
 function renderRoleChips(roles: string[]) {
@@ -166,7 +144,7 @@ function renderRoleChips(roles: string[]) {
 }
 
 export function UsersPage() {
-  const { showSnackbar } = useSnackbar()
+  const notify = useAppNotify()
   const canWrite = React.useMemo(() => {
     const user = getAuthSnapshot().user
     return Boolean(user?.permissions.some((permission) => permission.trim().toLowerCase() === 'users.write'))
@@ -217,11 +195,14 @@ export function UsersPage() {
       setRoleOptions(Array.isArray(payload.items) ? payload.items : [])
     } catch (error) {
       setRoleOptions([])
-      showSnackbar({ severity: 'error', message: toRequestErrorMessage(error, 'Unable to load roles.') })
+      await handleAppError(error, {
+        fallbackMessage: 'Unable to load roles.',
+        notifier: notify,
+      })
     } finally {
       setLoadingRoleOptions(false)
     }
-  }, [canReadRoles, showSnackbar])
+  }, [canReadRoles, notify])
 
   React.useEffect(() => {
     void loadRoleOptions()
@@ -258,19 +239,19 @@ export function UsersPage() {
           roles: createRoles,
         }),
       })
-      showSnackbar({ severity: 'success', message: 'User created.' })
+      notify.success('User created.')
       setCreateOpen(false)
       setCreateForm(defaultCreateForm)
       setCreateRoles([])
       refreshGrid()
     } catch (error) {
-      const fieldErrors = validationFieldErrors(error)
-      if (Object.values(fieldErrors).some((message) => Boolean(message))) {
-        setCreateErrors(fieldErrors)
-      }
-      const message = toRequestErrorMessage(error, 'Unable to create user.')
-      setCreateErrorMessage(message)
-      showSnackbar({ severity: 'error', message })
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to create user.',
+        notifier: notify,
+        onValidationError: (fieldErrors) => setCreateErrors(mapValidationFieldErrors(fieldErrors)),
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setCreateErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSubmitting(false)
     }
@@ -306,20 +287,20 @@ export function UsersPage() {
         method: 'PATCH',
         body: JSON.stringify(payload),
       })
-      showSnackbar({ severity: 'success', message: 'User updated.' })
+      notify.success('User updated.')
       setEditOpen(false)
       setEditUser(null)
       setEditForm(defaultCreateForm)
       setEditRoles([])
       refreshGrid()
     } catch (error) {
-      const fieldErrors = validationFieldErrors(error)
-      if (Object.values(fieldErrors).some((message) => Boolean(message))) {
-        setEditErrors(fieldErrors)
-      }
-      const message = toRequestErrorMessage(error, 'Unable to update user.')
-      setEditErrorMessage(message)
-      showSnackbar({ severity: 'error', message })
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to update user.',
+        notifier: notify,
+        onValidationError: (fieldErrors) => setEditErrors(mapValidationFieldErrors(fieldErrors)),
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setEditErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSubmitting(false)
     }
@@ -332,13 +313,16 @@ export function UsersPage() {
           method: 'PATCH',
           body: JSON.stringify({ isActive: nextActive }),
         })
-        showSnackbar({ severity: 'success', message: `User ${nextActive ? 'activated' : 'deactivated'}.` })
+        notify.success(`User ${nextActive ? 'activated' : 'deactivated'}.`)
         refreshGrid()
       } catch (error) {
-        showSnackbar({ severity: 'error', message: toRequestErrorMessage(error, 'Unable to update active status.') })
+        await handleAppError(error, {
+          fallbackMessage: 'Unable to update active status.',
+          notifier: notify,
+        })
       }
     },
-    [refreshGrid, showSnackbar],
+    [notify, refreshGrid],
   )
 
   const roleNames = React.useMemo(() => roleOptions.map((role) => role.name), [roleOptions])

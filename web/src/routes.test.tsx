@@ -111,7 +111,7 @@ describe('web auth routes', () => {
     expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
   })
 
-  it('login failure shows backend message and request ID', async () => {
+  it('login failure shows inline invalid-credentials message', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -151,7 +151,7 @@ describe('web auth routes', () => {
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'bad-pass' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
 
-    expect(await screen.findByText('Invalid credentials Request ID: req-401')).toBeInTheDocument()
+    expect(await screen.findByText('Invalid username or password.')).toBeInTheDocument()
   })
 
   it('refresh failure logs out and redirects to /login', async () => {

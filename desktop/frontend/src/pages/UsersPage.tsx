@@ -15,13 +15,13 @@ import {
   Typography,
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
-import { ApiError } from '../api/client'
 import type { PaginatedResponse } from '../api/pagination'
 import { useApiClient } from '../api/useApiClient'
 import { useSessionPrincipal } from '../auth/hooks'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
+import { handleAppError } from '../errors/handleAppError'
 import { notify } from '../notifications/facade'
 
 interface UserRow {
@@ -76,41 +76,19 @@ const defaultCreateForm: UserFormState = {
   isActive: true,
 }
 
-function toErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof ApiError) {
-    return error.message || fallback
-  }
-  return fallback
-}
-
-function toFieldError(value: unknown) {
-  if (typeof value === 'string') {
-    return value
-  }
-  if (Array.isArray(value)) {
-    const first = value.find((entry) => typeof entry === 'string')
-    return typeof first === 'string' ? first : ''
-  }
-  return ''
-}
-
-function validationFieldErrors(error: unknown): UserFormErrors {
-  if (!(error instanceof ApiError) || error.code !== 'VALIDATION_ERROR' || !error.details) {
-    return {}
-  }
-
-  const details = error.details
+function mapValidationFieldErrors(details?: Record<string, string[]>): UserFormErrors {
+  const first = (key: string) => details?.[key]?.[0] ?? ''
   return {
-    username: toFieldError(details.username),
-    password: toFieldError(details.password),
-    email: toFieldError(details.email),
-    language: toFieldError(details.language),
-    firstName: toFieldError(details.firstName),
-    lastName: toFieldError(details.lastName),
-    displayName: toFieldError(details.displayName),
-    phoneNumber: toFieldError(details.phoneNumber),
-    whatsappNumber: toFieldError(details.whatsappNumber),
-    telegramHandle: toFieldError(details.telegramHandle),
+    username: first('username'),
+    password: first('password'),
+    email: first('email'),
+    language: first('language'),
+    firstName: first('firstName'),
+    lastName: first('lastName'),
+    displayName: first('displayName'),
+    phoneNumber: first('phoneNumber'),
+    whatsappNumber: first('whatsappNumber'),
+    telegramHandle: first('telegramHandle'),
     isActive: '',
   }
 }
@@ -210,8 +188,9 @@ export function UsersPage() {
     try {
       const payload = await apiClient.request<PaginatedResponse<RoleOption>>('/api/v1/admin/roles?page=1&pageSize=200&sort=name:asc')
       setRoleOptions(Array.isArray(payload.items) ? payload.items : [])
-    } catch {
+    } catch (error) {
       setRoleOptions([])
+      await handleAppError(error, { fallbackMessage: 'Unable to load roles.' })
     } finally {
       setLoadingRoleOptions(false)
     }
@@ -260,11 +239,10 @@ export function UsersPage() {
       setCreateRoles([])
       refreshGrid()
     } catch (error) {
-      const fieldErrors = validationFieldErrors(error)
-      if (Object.values(fieldErrors).some((message) => Boolean(message))) {
-        setCreateErrors(fieldErrors)
-      }
-      notify.error(toErrorMessage(error, 'Unable to create user.'))
+      await handleAppError(error, {
+        fallbackMessage: 'Unable to create user.',
+        onValidationError: (fieldErrors) => setCreateErrors(mapValidationFieldErrors(fieldErrors)),
+      })
     } finally {
       setSubmitting(false)
     }
@@ -307,11 +285,10 @@ export function UsersPage() {
       setEditRoles([])
       refreshGrid()
     } catch (error) {
-      const fieldErrors = validationFieldErrors(error)
-      if (Object.values(fieldErrors).some((message) => Boolean(message))) {
-        setEditErrors(fieldErrors)
-      }
-      notify.error(toErrorMessage(error, 'Unable to update user.'))
+      await handleAppError(error, {
+        fallbackMessage: 'Unable to update user.',
+        onValidationError: (fieldErrors) => setEditErrors(mapValidationFieldErrors(fieldErrors)),
+      })
     } finally {
       setSubmitting(false)
     }
@@ -326,7 +303,7 @@ export function UsersPage() {
       notify.success(`User ${nextActive ? 'activated' : 'deactivated'}.`)
       refreshGrid()
     } catch (error) {
-      notify.error(toErrorMessage(error, 'Unable to update active status.'))
+      await handleAppError(error, { fallbackMessage: 'Unable to update active status.' })
     }
   }
 
@@ -346,7 +323,7 @@ export function UsersPage() {
       setResetPassword('')
       refreshGrid()
     } catch (error) {
-      notify.error(toErrorMessage(error, 'Unable to reset password.'))
+      await handleAppError(error, { fallbackMessage: 'Unable to reset password.' })
     } finally {
       setSubmitting(false)
     }
@@ -368,7 +345,7 @@ export function UsersPage() {
       setRolesSelection([])
       refreshGrid()
     } catch (error) {
-      notify.error(toErrorMessage(error, 'Unable to update roles.'))
+      await handleAppError(error, { fallbackMessage: 'Unable to update roles.' })
     } finally {
       setSubmitting(false)
     }

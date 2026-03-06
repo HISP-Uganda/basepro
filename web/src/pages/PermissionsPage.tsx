@@ -8,7 +8,7 @@ import { buildAdminListRequestQuery, useAdminListSearch } from '../components/ad
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { apiRequest } from '../lib/api'
 import type { PaginatedResponse } from '../lib/pagination'
-import { useSnackbar } from '../ui/snackbar'
+import { useAppNotify } from '../notifications/facade'
 
 interface PermissionRow {
   id: number
@@ -26,7 +26,7 @@ function formatDate(value: string) {
 }
 
 export function PermissionsPage() {
-  const { showSnackbar } = useSnackbar()
+  const notify = useAppNotify()
   const canRead = React.useMemo(() => {
     const user = getAuthSnapshot().user
     if (!user) {
@@ -191,7 +191,7 @@ export function PermissionsPage() {
         open={metadataOpen}
         metadata={selectedMetadata}
         onClose={() => setMetadataOpen(false)}
-        onCopied={() => showSnackbar({ severity: 'success', message: 'Permission metadata copied.' })}
+        onCopied={() => notify.success('Permission metadata copied.')}
       />
     </Box>
   )

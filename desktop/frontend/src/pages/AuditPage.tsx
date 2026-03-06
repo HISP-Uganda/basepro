@@ -10,13 +10,13 @@ import {
   Typography,
 } from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
-import { ApiError } from '../api/client'
 import type { PaginatedResponse } from '../api/pagination'
 import { useApiClient } from '../api/useApiClient'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { JsonMetadataDialog } from '../components/admin/JsonMetadataDialog'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
+import { handleAppError } from '../errors/handleAppError'
 import { notify } from '../notifications/facade'
 
 interface AuditRow {
@@ -131,8 +131,7 @@ export function AuditPage() {
           total: payload.totalCount,
         }
       } catch (error) {
-        const message = error instanceof ApiError ? error.message : 'Unable to load audit logs.'
-        notify.error(message)
+        await handleAppError(error, { fallbackMessage: 'Unable to load audit logs.' })
         throw error
       }
     },

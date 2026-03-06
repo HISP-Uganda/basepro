@@ -20,6 +20,8 @@ import {
 import { useNavigate, useRouter } from '@tanstack/react-router'
 import { createApiClient } from '../api/client'
 import { useSessionPrincipal } from '../auth/hooks'
+import { handleAppError } from '../errors/handleAppError'
+import { notify } from '../notifications/facade'
 import { hasPermission } from '../rbac/permissions'
 import { THEME_MODES, type AppSettings, type ThemeMode } from '../settings/types'
 import { PalettePresetPicker } from '../ui/PalettePresetPicker'
@@ -49,12 +51,12 @@ export function SettingsPage() {
     null,
   )
   const [backendVersionLoading, setBackendVersionLoading] = React.useState(true)
-  const [status, setStatus] = React.useState<{ severity: 'success' | 'error'; message: string } | null>(null)
+  const [connectionErrorMessage, setConnectionErrorMessage] = React.useState('')
   const [brandingDisplayName, setBrandingDisplayName] = React.useState('BasePro')
   const [brandingImageUrl, setBrandingImageUrl] = React.useState('')
   const [brandingLoading, setBrandingLoading] = React.useState(true)
   const [brandingSaving, setBrandingSaving] = React.useState(false)
-  const [brandingStatus, setBrandingStatus] = React.useState<{ severity: 'success' | 'error'; message: string } | null>(null)
+  const [brandingErrorMessage, setBrandingErrorMessage] = React.useState('')
   const [brandingPreviewBroken, setBrandingPreviewBroken] = React.useState(false)
 
   React.useEffect(() => {
@@ -140,12 +142,13 @@ export function SettingsPage() {
         setBrandingImageUrl(loginImageUrl)
         setBrandingPreviewBroken(false)
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) {
           return
         }
         setBrandingDisplayName('BasePro')
         setBrandingImageUrl('')
+        void handleAppError(error, { fallbackMessage: 'Unable to load login branding settings.' })
       })
       .finally(() => {
         if (active) {
@@ -178,12 +181,12 @@ export function SettingsPage() {
       return
     }
     if (brandingUrlValidationError) {
-      setBrandingStatus({ severity: 'error', message: brandingUrlValidationError })
+      setBrandingErrorMessage(brandingUrlValidationError)
       return
     }
 
     setBrandingSaving(true)
-    setBrandingStatus(null)
+    setBrandingErrorMessage('')
     try {
       const saved = await apiClient.updateLoginBranding({
         applicationDisplayName: brandingDisplayName.trim(),
@@ -192,10 +195,14 @@ export function SettingsPage() {
       setBrandingDisplayName((saved.appDisplayName ?? saved.applicationDisplayName ?? '').trim() || 'BasePro')
       setBrandingImageUrl(typeof saved.loginImageUrl === 'string' ? saved.loginImageUrl : '')
       setBrandingPreviewBroken(false)
-      setBrandingStatus({ severity: 'success', message: 'Login branding saved.' })
+      notify.success('Login branding saved.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to save login branding.'
-      setBrandingStatus({ severity: 'error', message })
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to save login branding.',
+        notifyUser: false,
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setBrandingErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setBrandingSaving(false)
     }
@@ -207,7 +214,7 @@ export function SettingsPage() {
     }
 
     setSaving(true)
-    setStatus(null)
+    setConnectionErrorMessage('')
     try {
       const saved = await settingsStore.saveSettings({
         apiBaseUrl: settings.apiBaseUrl,
@@ -215,10 +222,14 @@ export function SettingsPage() {
       })
       setSettings(saved)
       setBackendVersionLoading(true)
-      setStatus({ severity: 'success', message: 'Connection settings saved.' })
+      notify.success('Connection settings saved.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to save settings.'
-      setStatus({ severity: 'error', message })
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to save settings.',
+        notifyUser: false,
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setConnectionErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSaving(false)
     }
@@ -226,13 +237,12 @@ export function SettingsPage() {
 
   const onTestConnection = async () => {
     setTesting(true)
-    setStatus(null)
+    setConnectionErrorMessage('')
     try {
       await apiClient.healthCheck()
-      setStatus({ severity: 'success', message: 'Connection succeeded.' })
+      notify.success('Connection succeeded.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Connection failed.'
-      setStatus({ severity: 'error', message })
+      await handleAppError(error, { fallbackMessage: 'Connection failed.' })
     } finally {
       setTesting(false)
     }
@@ -300,6 +310,7 @@ export function SettingsPage() {
                 {saving ? 'Saving...' : 'Save Connection'}
               </Button>
             </Stack>
+            {connectionErrorMessage ? <Alert severity="error">{connectionErrorMessage}</Alert> : null}
           </Stack>
         </CardContent>
       </Card>
@@ -421,7 +432,7 @@ export function SettingsPage() {
               )}
             </Box>
             {!canWriteBranding ? <Alert severity="info">You need settings.write permission to update branding.</Alert> : null}
-            {brandingStatus ? <Alert severity={brandingStatus.severity}>{brandingStatus.message}</Alert> : null}
+            {brandingErrorMessage ? <Alert severity="error">{brandingErrorMessage}</Alert> : null}
             <Stack direction="row" justifyContent="flex-end">
               <Button
                 variant="contained"
@@ -460,8 +471,6 @@ export function SettingsPage() {
           </Stack>
         </CardContent>
       </Card>
-
-      {status ? <Alert severity={status.severity}>{status.message}</Alert> : null}
 
       <PalettePresetPicker open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />
     </Stack>

@@ -1,7 +1,8 @@
 import React from 'react'
 import { Alert, Button, Link, Stack, TextField } from '@mui/material'
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { ApiError, createApiClient } from '../api/client'
+import { createApiClient } from '../api/client'
+import { handleAppError } from '../errors/handleAppError'
 import { AuthSplitLayout } from './auth/AuthSplitLayout'
 import { useAuthBranding } from './auth/useAuthBranding'
 
@@ -24,21 +25,28 @@ export function ForgotPasswordPage() {
   const [submitting, setSubmitting] = React.useState(false)
   const [success, setSuccess] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState('')
+  const [identifierError, setIdentifierError] = React.useState('')
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setSubmitting(true)
     setErrorMessage('')
+    setIdentifierError('')
 
     try {
       await apiClient.forgotPassword({ identifier: identifier.trim() })
       setSuccess(true)
     } catch (error) {
-      if (error instanceof ApiError) {
-        setErrorMessage(error.message)
-      } else {
-        setErrorMessage('Unable to request reset right now. Please try again.')
-      }
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to request reset right now. Please try again.',
+        notifyUser: false,
+        onValidationError: (fieldErrors) => {
+          const message = fieldErrors.identifier?.[0] ?? fieldErrors.email?.[0] ?? fieldErrors.username?.[0] ?? ''
+          setIdentifierError(message)
+        },
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSubmitting(false)
     }
@@ -57,6 +65,8 @@ export function ForgotPasswordPage() {
           onChange={(event) => setIdentifier(event.target.value)}
           required
           fullWidth
+          error={Boolean(identifierError)}
+          helperText={identifierError}
           InputProps={{ sx: { minHeight: 56 } }}
         />
 

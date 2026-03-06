@@ -13,13 +13,13 @@ import {
   Typography,
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
-import { ApiError } from '../api/client'
 import type { PaginatedResponse } from '../api/pagination'
 import { useApiClient } from '../api/useApiClient'
 import { useSessionPrincipal } from '../auth/hooks'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
+import { handleAppError } from '../errors/handleAppError'
 import { notify } from '../notifications/facade'
 
 interface RoleRow {
@@ -51,13 +51,6 @@ interface RoleDetail {
   users?: RoleUserRow[]
   createdAt: string
   updatedAt: string
-}
-
-function toErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof ApiError) {
-    return error.message || fallback
-  }
-  return fallback
 }
 
 function permissionLabel(permission: PermissionRow) {
@@ -111,7 +104,7 @@ export function RolesPage() {
       setPermissionOptions(Array.isArray(payload.items) ? payload.items : [])
     } catch (error) {
       setPermissionOptions([])
-      notify.error(toErrorMessage(error, 'Unable to load permissions.'))
+      await handleAppError(error, { fallbackMessage: 'Unable to load permissions.' })
     } finally {
       setLoadingPermissions(false)
     }
@@ -153,7 +146,7 @@ export function RolesPage() {
       setCreatePermissions([])
       refreshGrid()
     } catch (error) {
-      notify.error(toErrorMessage(error, 'Unable to create role.'))
+      await handleAppError(error, { fallbackMessage: 'Unable to create role.' })
     } finally {
       setSubmitting(false)
     }
@@ -168,7 +161,7 @@ export function RolesPage() {
         setEditPermissions(detail.permissions)
         setEditOpen(true)
       } catch (error) {
-        notify.error(toErrorMessage(error, 'Unable to load role details.'))
+        await handleAppError(error, { fallbackMessage: 'Unable to load role details.' })
       }
     },
     [loadRoleDetail],
@@ -194,7 +187,7 @@ export function RolesPage() {
       setEditPermissions([])
       refreshGrid()
     } catch (error) {
-      notify.error(toErrorMessage(error, 'Unable to update role.'))
+      await handleAppError(error, { fallbackMessage: 'Unable to update role.' })
     } finally {
       setSubmitting(false)
     }
@@ -207,7 +200,7 @@ export function RolesPage() {
         setDetails(detail)
         setDetailsOpen(true)
       } catch (error) {
-        notify.error(toErrorMessage(error, 'Unable to load role details.'))
+        await handleAppError(error, { fallbackMessage: 'Unable to load role details.' })
       }
     },
     [loadRoleDetail],

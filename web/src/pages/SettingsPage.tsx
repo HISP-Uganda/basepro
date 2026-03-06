@@ -16,11 +16,12 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { isApiError, useAuth } from '../auth/AuthProvider'
+import { useAuth } from '../auth/AuthProvider'
+import { handleAppError } from '../errors/handleAppError'
 import { apiRequest } from '../lib/api'
 import { appName } from '../lib/env'
 import { getApiBaseUrlOverride, setApiBaseUrlOverride } from '../lib/apiBaseUrl'
-import { useSnackbar } from '../ui/snackbar'
+import { useAppNotify } from '../notifications/facade'
 import { type UiThemeMode } from '../ui/preferences'
 import { PaletteRoundedIcon } from '../ui/icons'
 import { PalettePresetPicker } from '../ui/theme/PalettePresetPicker'
@@ -34,7 +35,7 @@ interface HealthResponse {
 
 export function SettingsPage() {
   const auth = useAuth()
-  const { showSnackbar } = useSnackbar()
+  const notify = useAppNotify()
   const {
     prefs,
     resolvedMode,
@@ -53,6 +54,7 @@ export function SettingsPage() {
   const [brandingLoading, setBrandingLoading] = React.useState(true)
   const [brandingSaving, setBrandingSaving] = React.useState(false)
   const [brandingPreviewBroken, setBrandingPreviewBroken] = React.useState(false)
+  const [brandingErrorMessage, setBrandingErrorMessage] = React.useState('')
 
   const canWriteBranding = React.useMemo(
     () => (auth.user?.permissions ?? []).some((permission) => permission.trim().toLowerCase() === 'settings.write'),
@@ -75,10 +77,14 @@ export function SettingsPage() {
         setBrandingImageUrl(typeof payload.loginImageUrl === 'string' ? payload.loginImageUrl.trim() : '')
         setBrandingPreviewBroken(false)
       })
-      .catch(() => {
+      .catch((error) => {
         if (active) {
           setBrandingDisplayName(appName)
           setBrandingImageUrl('')
+          void handleAppError(error, {
+            fallbackMessage: 'Unable to load login branding settings.',
+            notifier: notify,
+          })
         }
       })
       .finally(() => {
@@ -90,7 +96,7 @@ export function SettingsPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [notify])
 
   const brandingUrlValidationError = React.useMemo(() => {
     if (!brandingImageUrl.trim()) {
@@ -109,37 +115,23 @@ export function SettingsPage() {
 
   const handleBaseUrlSave = () => {
     setApiBaseUrlOverride(apiBaseUrlOverride)
-    showSnackbar({
-      severity: 'success',
-      message: apiBaseUrlOverride.trim()
+    notify.success(
+      apiBaseUrlOverride.trim()
         ? 'API base URL override saved.'
         : 'API base URL override cleared. Using default environment URL.',
-    })
+    )
   }
 
   const handleTestConnection = async () => {
     setTestingConnection(true)
     try {
       const health = await apiRequest<HealthResponse>('/health', { method: 'GET' }, { withAuth: false, retryOnUnauthorized: false })
-      showSnackbar({
-        severity: 'success',
-        message: `Connection successful (${health.status ?? 'ok'})`,
-      })
+      notify.success(`Connection successful (${health.status ?? 'ok'})`)
     } catch (error) {
-      if (isApiError(error)) {
-        const requestId = error.requestId ? ` Request ID: ${error.requestId}` : ''
-        showSnackbar({
-          severity: 'error',
-          message: `Connection failed: ${error.message}${requestId}`,
-          autoHideDuration: 7000,
-        })
-      } else {
-        showSnackbar({
-          severity: 'error',
-          message: 'Connection failed. Please verify the API base URL and try again.',
-          autoHideDuration: 7000,
-        })
-      }
+      await handleAppError(error, {
+        fallbackMessage: 'Connection failed. Please verify the API base URL and try again.',
+        notifier: notify,
+      })
     } finally {
       setTestingConnection(false)
     }
@@ -150,11 +142,12 @@ export function SettingsPage() {
       return
     }
     if (brandingUrlValidationError) {
-      showSnackbar({ severity: 'error', message: brandingUrlValidationError })
+      setBrandingErrorMessage(brandingUrlValidationError)
       return
     }
 
     setBrandingSaving(true)
+    setBrandingErrorMessage('')
     try {
       const payload = await apiRequest<{ appDisplayName?: string; applicationDisplayName?: string; loginImageUrl?: string | null }>(
         '/settings/login-branding',
@@ -169,13 +162,14 @@ export function SettingsPage() {
       setBrandingDisplayName((payload.appDisplayName ?? payload.applicationDisplayName ?? '').trim() || appName)
       setBrandingImageUrl(typeof payload.loginImageUrl === 'string' ? payload.loginImageUrl.trim() : '')
       setBrandingPreviewBroken(false)
-      showSnackbar({ severity: 'success', message: 'Login branding saved.' })
+      notify.success('Login branding saved.')
     } catch (error) {
-      if (isApiError(error)) {
-        showSnackbar({ severity: 'error', message: error.message })
-      } else {
-        showSnackbar({ severity: 'error', message: 'Unable to save login branding.' })
-      }
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to save login branding.',
+        notifyUser: false,
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setBrandingErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setBrandingSaving(false)
     }
@@ -312,6 +306,7 @@ export function SettingsPage() {
             )}
           </Box>
           {!canWriteBranding ? <Alert severity="info">You need settings.write permission to update branding.</Alert> : null}
+          {brandingErrorMessage ? <Alert severity="error">{brandingErrorMessage}</Alert> : null}
           <Stack direction="row" justifyContent="flex-end">
             <Button
               variant="contained"

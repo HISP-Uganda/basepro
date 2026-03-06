@@ -196,6 +196,7 @@ describe('users and audit pages', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }))
 
     await waitFor(() => expect(createPayload).not.toBeNull())
+    expect(await screen.findByText('User created.')).toBeInTheDocument()
     expect(createPayload).toMatchObject({
       username: 'new-user',
       password: 'TempPass123!',

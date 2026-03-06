@@ -1,9 +1,10 @@
 import React from 'react'
 import { Alert, Button, Link, Stack, TextField } from '@mui/material'
 import { useNavigate } from '@tanstack/react-router'
+import { isApiError } from '../auth/AuthProvider'
 import { consumeIntendedDestination } from '../auth/sessionExpiry'
 import { useAuth } from '../auth/AuthProvider'
-import { normalizeError } from '../errors/normalizeError'
+import { handleAppError } from '../errors/handleAppError'
 import { apiBaseUrl, appName } from '../lib/env'
 import { AuthSplitLayout } from './auth/AuthSplitLayout'
 import { useAuthBranding } from './auth/useAuthBranding'
@@ -26,9 +27,16 @@ export function LoginPage() {
       await auth.login(username, password)
       await navigate({ to: consumeIntendedDestination('/dashboard'), replace: true })
     } catch (error) {
-      const normalized = normalizeError(error, 'Unable to sign in right now. Please try again.')
-      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
-      setErrorMessage(`${normalized.message}${requestId}`)
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to sign in right now. Please try again.',
+        notifyUser: false,
+      })
+      if (isApiError(error) && (error.status === 401 || normalized.type === 'unauthorized')) {
+        setErrorMessage('Invalid username or password.')
+      } else {
+        const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+        setErrorMessage(`${normalized.message}${requestId}`)
+      }
     } finally {
       setSubmitting(false)
     }

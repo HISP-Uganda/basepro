@@ -15,13 +15,13 @@ import {
 } from '@mui/material'
 import type { GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
 import { getAuthSnapshot } from '../auth/state'
-import { isApiError } from '../auth/AuthProvider'
 import { AdminRowActions } from '../components/admin/AdminRowActions'
 import { buildAdminListRequestQuery, useAdminListSearch } from '../components/admin/listSearch'
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
+import { handleAppError } from '../errors/handleAppError'
 import { apiRequest } from '../lib/api'
 import type { PaginatedResponse } from '../lib/pagination'
-import { useSnackbar } from '../ui/snackbar'
+import { useAppNotify } from '../notifications/facade'
 
 interface RoleRow {
   id: number
@@ -69,15 +69,8 @@ function permissionLabel(permission: PermissionRow) {
   return `${permission.name} (${permission.moduleScope})`
 }
 
-function toRequestErrorMessage(error: unknown, fallback: string) {
-  if (!isApiError(error)) {
-    return fallback
-  }
-  return error.requestId ? `${error.message} Request ID: ${error.requestId}` : error.message
-}
-
 export function RolesPage() {
-  const { showSnackbar } = useSnackbar()
+  const notify = useAppNotify()
   const canRead = React.useMemo(() => {
     const user = getAuthSnapshot().user
     if (!user) {
@@ -123,11 +116,14 @@ export function RolesPage() {
       setPermissionOptions(Array.isArray(payload.items) ? payload.items : [])
     } catch (error) {
       setPermissionOptions([])
-      showSnackbar({ severity: 'error', message: toRequestErrorMessage(error, 'Unable to load permissions.') })
+      await handleAppError(error, {
+        fallbackMessage: 'Unable to load permissions.',
+        notifier: notify,
+      })
     } finally {
       setLoadingPermissions(false)
     }
-  }, [showSnackbar])
+  }, [notify])
 
   React.useEffect(() => {
     if (!canRead) {
@@ -161,15 +157,18 @@ export function RolesPage() {
           permissions: createPermissions.map((permission) => permission.name),
         }),
       })
-      showSnackbar({ severity: 'success', message: 'Role created.' })
+      notify.success('Role created.')
       setCreateOpen(false)
       setCreateName('')
       setCreatePermissions([])
       refreshGrid()
     } catch (error) {
-      const message = toRequestErrorMessage(error, 'Unable to create role.')
-      setCreateErrorMessage(message)
-      showSnackbar({ severity: 'error', message })
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to create role.',
+        notifier: notify,
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setCreateErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSubmitting(false)
     }
@@ -185,10 +184,13 @@ export function RolesPage() {
         setEditErrorMessage('')
         setEditOpen(true)
       } catch (error) {
-        showSnackbar({ severity: 'error', message: toRequestErrorMessage(error, 'Unable to load role details.') })
+        await handleAppError(error, {
+          fallbackMessage: 'Unable to load role details.',
+          notifier: notify,
+        })
       }
     },
-    [loadRoleDetail, showSnackbar],
+    [loadRoleDetail, notify],
   )
 
   const onSaveEdit = async () => {
@@ -205,16 +207,19 @@ export function RolesPage() {
           permissions: editPermissions.map((permission) => permission.name),
         }),
       })
-      showSnackbar({ severity: 'success', message: 'Role updated.' })
+      notify.success('Role updated.')
       setEditOpen(false)
       setEditRoleId(null)
       setEditName('')
       setEditPermissions([])
       refreshGrid()
     } catch (error) {
-      const message = toRequestErrorMessage(error, 'Unable to update role.')
-      setEditErrorMessage(message)
-      showSnackbar({ severity: 'error', message })
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to update role.',
+        notifier: notify,
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setEditErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSubmitting(false)
     }
@@ -227,10 +232,13 @@ export function RolesPage() {
         setDetails(detail)
         setDetailsOpen(true)
       } catch (error) {
-        showSnackbar({ severity: 'error', message: toRequestErrorMessage(error, 'Unable to load role details.') })
+        await handleAppError(error, {
+          fallbackMessage: 'Unable to load role details.',
+          notifier: notify,
+        })
       }
     },
-    [loadRoleDetail, showSnackbar],
+    [loadRoleDetail, notify],
   )
 
   const columns = React.useMemo<GridColDef<RoleRow>[]>(

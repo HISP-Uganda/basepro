@@ -1,5 +1,56 @@
 # Status
 
+## Milestone J — Page-Level Notification/Error Handling Migration (Complete)
+
+### What changed
+- Migrated desktop and web page-level logic for:
+  - Login
+  - Forgot Password
+  - Reset Password
+  - Users
+  - Roles
+  - Permissions
+  - Settings
+  - Audit Log
+- Replaced ad-hoc web snackbar usage (`useSnackbar().showSnackbar`) with standardized notification facade usage (`useAppNotify()` with `notify.success/error/warning/info`) across the migrated pages.
+- Replaced page-level manual error parsing with shared error handling:
+  - `handleAppError(error, options)` now drives fallback messaging and notifications
+  - validation-field mapping now consumes normalized `fieldErrors` from shared handling, then renders inline on form fields
+- Applied login exception behavior while still using shared logic:
+  - invalid credentials now render as inline login form message (`Invalid username or password.`)
+  - non-credential login failures still use normalized error output with request-id suffix where available
+- Settings page behavior aligned to policy:
+  - success/failure actions now use standardized notifications
+  - form submission failures for settings/branding now render form-level alerts
+  - unexpected branding-load failures now use fallback behavior plus notification via shared error handling
+- Removed duplicated/inconsistent page helper patterns where practical:
+  - removed ad-hoc request-id string builders and API-error parsing helpers in migrated pages
+  - removed mixed snackbar APIs in favor of standardized notify facade usage
+- Saved this prompt copy at:
+  - `docs/prompts/2026-03-06-notification-error-page-migration.md` (gitignored, not for commit)
+
+### Desktop/Web parity state
+- Desktop and web now share the same page-level error-handling intent and behavior classes for the migrated pages:
+  - field validation errors are rendered inline under inputs
+  - form submission failures are rendered as form-level messages where applicable
+  - action outcomes are surfaced via shared notification facade
+  - session-expiry handling remains centralized in existing auth/session flows
+- Login behavior is aligned in both clients with the documented inline invalid-credentials exception.
+
+### Tests and verification
+- Backend:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...` -> PASS
+- Desktop frontend:
+  - `cd desktop/frontend && npm test -- --run` -> PASS
+- Web frontend:
+  - `cd web && npm test -- --run` -> PASS
+- Web production build:
+  - `cd web && npm run build` -> PASS
+
+### Known follow-ups
+- Existing non-blocking MUI jsdom `anchorEl` warnings remain in frontend tests.
+- Existing non-blocking Vite bundle warnings (`'use client'` directive and chunk-size notices) remain unchanged.
+
 ## Milestone I — Desktop/Web Notification + Error Handling Foundation (Complete)
 
 ### What changed

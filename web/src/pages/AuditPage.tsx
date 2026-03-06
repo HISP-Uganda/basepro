@@ -16,7 +16,7 @@ import { buildAdminListRequestQuery, useAdminListSearch } from '../components/ad
 import { AppDataGrid, type AppDataGridFetchParams } from '../components/datagrid/AppDataGrid'
 import { apiRequest } from '../lib/api'
 import type { PaginatedResponse } from '../lib/pagination'
-import { useSnackbar } from '../ui/snackbar'
+import { useAppNotify } from '../notifications/facade'
 
 interface AuditRow {
   id: number
@@ -54,7 +54,7 @@ function compactMetadata(metadata: unknown) {
 }
 
 export function AuditPage() {
-  const { showSnackbar } = useSnackbar()
+  const notify = useAppNotify()
   const { searchInput, setSearchInput, search } = useAdminListSearch()
 
   const [action, setAction] = React.useState('')
@@ -203,7 +203,7 @@ export function AuditPage() {
         open={metadataDialogOpen}
         metadata={selectedMetadata}
         onClose={() => setMetadataDialogOpen(false)}
-        onCopied={() => showSnackbar({ severity: 'success', message: 'Metadata copied.' })}
+        onCopied={() => notify.success('Metadata copied.')}
       />
     </Box>
   )

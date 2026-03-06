@@ -1,7 +1,7 @@
 import React from 'react'
 import { Alert, Button, Link, Stack, TextField } from '@mui/material'
 import { useNavigate } from '@tanstack/react-router'
-import { isApiError } from '../auth/AuthProvider'
+import { handleAppError } from '../errors/handleAppError'
 import { apiRequest } from '../lib/api'
 import { AuthSplitLayout } from './auth/AuthSplitLayout'
 import { useAuthBranding } from './auth/useAuthBranding'
@@ -22,13 +22,20 @@ export function ResetPasswordPage() {
   const [submitting, setSubmitting] = React.useState(false)
   const [success, setSuccess] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState('')
+  const [tokenError, setTokenError] = React.useState('')
+  const [passwordError, setPasswordError] = React.useState('')
+  const [confirmPasswordError, setConfirmPasswordError] = React.useState('')
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setErrorMessage('')
+    setTokenError('')
+    setPasswordError('')
+    setConfirmPasswordError('')
 
     if (password !== confirmPassword) {
-      setErrorMessage('Passwords do not match.')
+      setConfirmPasswordError('Passwords do not match.')
+      setErrorMessage('Please correct the highlighted fields.')
       return
     }
 
@@ -44,11 +51,17 @@ export function ResetPasswordPage() {
       )
       setSuccess(true)
     } catch (error) {
-      if (isApiError(error)) {
-        setErrorMessage(error.message)
-      } else {
-        setErrorMessage('Unable to reset password right now. Please try again.')
-      }
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to reset password right now. Please try again.',
+        notifyUser: false,
+        onValidationError: (fieldErrors) => {
+          setTokenError(fieldErrors.token?.[0] ?? '')
+          setPasswordError(fieldErrors.password?.[0] ?? '')
+          setConfirmPasswordError(fieldErrors.confirmPassword?.[0] ?? '')
+        },
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setErrorMessage(`${normalized.message}${requestId}`)
     } finally {
       setSubmitting(false)
     }
@@ -67,6 +80,8 @@ export function ResetPasswordPage() {
           onChange={(event) => setToken(event.target.value)}
           required
           fullWidth
+          error={Boolean(tokenError)}
+          helperText={tokenError}
           InputProps={{ sx: { minHeight: 56 } }}
         />
         <TextField
@@ -76,6 +91,8 @@ export function ResetPasswordPage() {
           onChange={(event) => setPassword(event.target.value)}
           required
           fullWidth
+          error={Boolean(passwordError)}
+          helperText={passwordError}
           InputProps={{ sx: { minHeight: 56 } }}
         />
         <TextField
@@ -85,6 +102,8 @@ export function ResetPasswordPage() {
           onChange={(event) => setConfirmPassword(event.target.value)}
           required
           fullWidth
+          error={Boolean(confirmPasswordError)}
+          helperText={confirmPasswordError}
           InputProps={{ sx: { minHeight: 56 } }}
         />
 
