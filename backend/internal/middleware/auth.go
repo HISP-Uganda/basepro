@@ -15,7 +15,8 @@ import (
 type PermissionOption func(*permissionRequirement)
 
 type permissionRequirement struct {
-	moduleScope *string
+	moduleScope       *string
+	adminRoleOverride bool
 }
 
 func WithModule(scope string) PermissionOption {
@@ -25,6 +26,12 @@ func WithModule(scope string) PermissionOption {
 			return
 		}
 		req.moduleScope = &trimmed
+	}
+}
+
+func WithAdminRoleOverride() PermissionOption {
+	return func(req *permissionRequirement) {
+		req.adminRoleOverride = true
 	}
 }
 
@@ -201,6 +208,24 @@ func RequirePermission(rbacService *rbac.Service, permission string, opts ...Per
 				return
 			}
 
+			if req.adminRoleOverride {
+				roleNames, err := rbacService.RoleNamesForUser(c.Request.Context(), principal.UserID)
+				if err != nil {
+					apperror.Write(c, err)
+					c.Abort()
+					return
+				}
+				if hasRoleName(roleNames, "admin") {
+					if err := enrichUserPrincipal(c, rbacService, principal); err != nil {
+						apperror.Write(c, err)
+						c.Abort()
+						return
+					}
+					c.Next()
+					return
+				}
+			}
+
 			hasPerm, err := rbacService.HasPermission(c.Request.Context(), principal.UserID, permission, req.moduleScope)
 			if err != nil {
 				apperror.Write(c, err)
@@ -259,6 +284,19 @@ func hasPermissionGrant(grants []auth.PermissionGrant, permission string, module
 			return true
 		}
 		if candidate.ModuleScope != nil && strings.EqualFold(strings.TrimSpace(*candidate.ModuleScope), strings.TrimSpace(*moduleScope)) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasRoleName(roles []string, target string) bool {
+	normalized := strings.TrimSpace(target)
+	if normalized == "" {
+		return false
+	}
+	for _, role := range roles {
+		if strings.EqualFold(strings.TrimSpace(role), normalized) {
 			return true
 		}
 	}

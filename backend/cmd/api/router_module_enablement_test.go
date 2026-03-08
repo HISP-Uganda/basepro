@@ -10,6 +10,7 @@ import (
 
 	"basepro/backend/internal/auth"
 	"basepro/backend/internal/moduleenablement"
+	"basepro/backend/internal/rbac"
 	"basepro/backend/internal/settings"
 )
 
@@ -157,5 +158,35 @@ func TestSettingsModuleEnablementUpdateAcceptsAuthorizedWriter(t *testing.T) {
 	}
 	if administrationItem.Source != "runtime" {
 		t.Fatalf("expected runtime source, got %s", administrationItem.Source)
+	}
+}
+
+func TestSettingsModuleEnablementUpdateAcceptsAdminWithoutExplicitSettingsWrite(t *testing.T) {
+	jwt := auth.NewJWTManager("jwt-secret", time.Minute)
+	token, _, _ := jwt.GenerateAccessToken(57, "admin", time.Now().UTC())
+	rbacService := rbac.NewService(&fakeRBACRepo{
+		rolesByUser: map[int64][]rbac.Role{
+			57: {{ID: 1, Name: "Admin"}},
+		},
+		permsByUser: map[int64][]rbac.Permission{
+			57: {{ID: 1, Name: "settings.read"}},
+		},
+	})
+	moduleService := moduleenablement.NewService(&fakeSettingsRepo{}, nil)
+	router := newRouter(AppDeps{
+		JWTManager:         jwt,
+		RBACService:        rbacService,
+		SettingsHandler:    settings.NewHandler(settings.NewService(&fakeSettingsRepo{}, nil)),
+		ModuleFlagsHandler: moduleenablement.NewHandler(moduleService, nil),
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/module-enablement", strings.NewReader(`{"modules":[{"moduleId":"administration","enabled":false}]}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
 	}
 }

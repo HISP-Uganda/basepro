@@ -1,31 +1,53 @@
 # Status
 
-## Planned Milestone — Server-Driven Bootstrap Config + Settings Authorization Contract (Upcoming)
+## Milestone — Server-Driven Bootstrap Config + Settings Authorization Contract (Complete)
 
-### Planned scope
-- Add backend bootstrap runtime contract endpoint to serve typed effective startup config for shared clients.
-- Add desktop and web bootstrap consumption flow based on backend contract (no ad-hoc client-only startup assumptions).
-- Add offline-aware cached bootstrap startup behavior:
-  - fetch fresh bootstrap first
-  - fallback to last valid cached bootstrap when backend is unreachable
-  - expose stale/offline-aware runtime state clearly
-- Protect Settings route/page access in desktop and web using:
-  - `admin` role
-  - or `settings.write` permission
-- Enforce backend-authoritative authorization for protected Settings APIs with typed unauthorized errors.
+### What changed
+- Added backend bootstrap endpoint:
+  - `GET /api/v1/bootstrap`
+- Added typed bootstrap contract implementation in `backend/internal/bootstrap`:
+  - app metadata (`version`, `commit`, `buildDate`)
+  - branding metadata (from existing login-branding settings service)
+  - effective module enablement list (resolved from registry defaults + config/runtime overrides)
+  - capability summary (auth/runtime + settings authorization intent)
+  - optional authenticated principal summary (user or api-token context)
+  - runtime metadata and cache hints for offline-aware client startup usage
+- Wired bootstrap route as backend source of truth while preserving existing auth/session behavior:
+  - optional principal enrichment via existing auth middleware
+  - no changes to login/refresh/logout contracts
+- Strengthened Settings write authorization server-side:
+  - write Settings APIs now allow `admin` role OR `settings.write` permission
+  - applied to:
+    - `PUT /api/v1/settings/login-branding`
+    - `PUT /api/v1/settings/module-enablement`
+  - read Settings APIs remain permission-based (`settings.read`) as currently designed
+- Kept settings mutations auditable:
+  - existing audit events for branding and module enablement updates remain unchanged and active
+- Saved prompt traceability copy:
+  - `docs/prompts/2026-03-08-backend-bootstrap-settings-auth.md` (gitignored; not for commit)
 
-### Planned validation expectations
-- Backend tests for bootstrap endpoint contract shape and registry-aligned derivation behavior.
-- Desktop/web tests for bootstrap startup consumption and offline cache fallback behavior.
-- Desktop/web route guard tests for Settings authorization (`admin` or `settings.write`) and unauthorized handling.
-- Full milestone gate remains:
-  - `go test ./...` (backend)
-  - desktop/frontend route/smoke tests
-  - web/frontend route/smoke tests
-  - `docs/status.md` completion evidence and parity notes
+### Added/updated targeted tests
+- Backend bootstrap contract tests:
+  - `backend/cmd/api/router_bootstrap_test.go`
+    - response shape and key sections
+    - effective module/config data inclusion
+    - authenticated principal + capability summary inclusion
+- Settings authorization tests:
+  - `backend/internal/middleware/authorization_test.go`
+    - admin-role override behavior for permission checks
+    - non-admin without write permission remains forbidden
+  - `backend/cmd/api/router_settings_test.go`
+    - settings branding update accepts admin without explicit `settings.write`
+  - `backend/cmd/api/router_module_enablement_test.go`
+    - module enablement update accepts admin without explicit `settings.write`
 
-### Notes
-- This is a planned milestone entry only; no runtime implementation is claimed in this update.
+### Tests and verification
+- Backend:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...` -> PASS
+
+### Follow-up notes
+- Desktop and web bootstrap consumption/caching behavior is intentionally pending client milestones.
+- Frontend route-level Settings gating should consume the new bootstrap capability summary in follow-up parity work.
 
 ## Milestone — Module Enablement Admin UX (Complete)
 

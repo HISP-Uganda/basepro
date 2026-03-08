@@ -13,6 +13,7 @@ import (
 
 	"basepro/backend/internal/audit"
 	"basepro/backend/internal/auth"
+	"basepro/backend/internal/bootstrap"
 	"basepro/backend/internal/config"
 	"basepro/backend/internal/db"
 	"basepro/backend/internal/logging"
@@ -117,6 +118,28 @@ func run() error {
 		}),
 	)
 	settingsService := settings.NewService(settings.NewSQLRepository(database), auditService)
+	bootstrapService := bootstrap.NewService(
+		bootstrap.AppInfo{
+			Version:   Version,
+			Commit:    Commit,
+			BuildDate: BuildDate,
+		},
+		func() bootstrap.RuntimeInfo {
+			nextCfg := config.Get()
+			return bootstrap.RuntimeInfo{
+				Environment:       os.Getenv("BASEPRO_ENV"),
+				APITokenEnabled:   nextCfg.Auth.APITokenEnabled,
+				APIHeaderName:     nextCfg.Auth.APITokenHeaderName,
+				APITokenAllowAuth: nextCfg.Auth.APITokenAllowBearer,
+			}
+		},
+		settingsService,
+		moduleEnablementService,
+		func() map[string]bool {
+			return config.Get().Modules.Flags
+		},
+		rbacService,
+	)
 
 	seedRBAC := cfg.Seed.EnableDevBootstrap || flags.seedDevAdmin
 	if seedRBAC {
@@ -171,6 +194,7 @@ func run() error {
 			AuditHandler:     audit.NewHandler(auditService),
 			UsersHandler:     users.NewHandler(usersService),
 			SettingsHandler:  settings.NewHandler(settingsService),
+			BootstrapHandler: bootstrap.NewHandler(bootstrapService),
 			ModuleFlagsHandler: moduleenablement.NewHandler(moduleEnablementService, func() map[string]bool {
 				return config.Get().Modules.Flags
 			}),

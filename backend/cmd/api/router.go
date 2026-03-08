@@ -7,6 +7,7 @@ import (
 
 	"basepro/backend/internal/audit"
 	"basepro/backend/internal/auth"
+	"basepro/backend/internal/bootstrap"
 	"basepro/backend/internal/middleware"
 	"basepro/backend/internal/moduleenablement"
 	"basepro/backend/internal/rbac"
@@ -31,6 +32,7 @@ type AppDeps struct {
 	AuditHandler        *audit.Handler
 	UsersHandler        *users.Handler
 	SettingsHandler     *settings.Handler
+	BootstrapHandler    *bootstrap.Handler
 	ModuleFlagsHandler  *moduleenablement.Handler
 	ModuleFlagsProvider func() map[string]bool
 	APITokenHeaderName  string
@@ -80,6 +82,15 @@ func newRouter(deps AppDeps) *gin.Engine {
 
 	if deps.ModuleFlagsHandler != nil {
 		api.GET("/modules/effective", deps.ModuleFlagsHandler.GetEffective)
+	}
+
+	if deps.BootstrapHandler != nil {
+		bootstrapHandlers := []gin.HandlerFunc{}
+		if deps.JWTManager != nil {
+			bootstrapHandlers = append(bootstrapHandlers, middleware.ResolveJWTPrincipal(deps.JWTManager))
+		}
+		bootstrapHandlers = append(bootstrapHandlers, deps.BootstrapHandler.Get)
+		api.GET("/bootstrap", bootstrapHandlers...)
 	}
 
 	if deps.AuthHandler != nil && deps.JWTManager != nil {
@@ -161,10 +172,10 @@ func newRouter(deps AppDeps) *gin.Engine {
 			middleware.RequireJWTUser(),
 		)
 		settingsGroup.GET("/login-branding", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsRead), deps.SettingsHandler.GetLoginBranding)
-		settingsGroup.PUT("/login-branding", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsWrite), deps.SettingsHandler.UpdateLoginBranding)
+		settingsGroup.PUT("/login-branding", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsWrite, middleware.WithAdminRoleOverride()), deps.SettingsHandler.UpdateLoginBranding)
 		if deps.ModuleFlagsHandler != nil {
 			settingsGroup.GET("/module-enablement", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsRead), deps.ModuleFlagsHandler.GetEffective)
-			settingsGroup.PUT("/module-enablement", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsWrite), deps.ModuleFlagsHandler.UpdateRuntimeOverrides)
+			settingsGroup.PUT("/module-enablement", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsWrite, middleware.WithAdminRoleOverride()), deps.ModuleFlagsHandler.UpdateRuntimeOverrides)
 		}
 	}
 

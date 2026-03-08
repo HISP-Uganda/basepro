@@ -182,3 +182,53 @@ func TestJWTUserWithoutAuditPermissionGetsForbidden(t *testing.T) {
 		t.Fatalf("expected AUTH_FORBIDDEN, got %q", body["error"]["code"])
 	}
 }
+
+func TestRequirePermissionAllowsAdminRoleOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jwt := auth.NewJWTManager("jwt-secret", time.Minute)
+	token, _, _ := jwt.GenerateAccessToken(77, "admin", time.Now().UTC())
+
+	rbacService := rbac.NewService(&fakeRBACRepo{
+		rolesByUser: map[int64][]rbac.Role{77: {{ID: 7, Name: "Admin"}}},
+		permsByUser: map[int64][]rbac.Permission{77: {{ID: 1, Name: "settings.read"}}},
+	})
+
+	r := gin.New()
+	r.PUT("/settings", JWTAuth(jwt), RequirePermission(rbacService, "settings.write", WithAdminRoleOverride()), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestRequirePermissionAdminOverrideStillForbidsNonAdminWithoutPermission(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jwt := auth.NewJWTManager("jwt-secret", time.Minute)
+	token, _, _ := jwt.GenerateAccessToken(78, "writerless", time.Now().UTC())
+
+	rbacService := rbac.NewService(&fakeRBACRepo{
+		rolesByUser: map[int64][]rbac.Role{78: {{ID: 8, Name: "Manager"}}},
+		permsByUser: map[int64][]rbac.Permission{78: {{ID: 1, Name: "settings.read"}}},
+	})
+
+	r := gin.New()
+	r.PUT("/settings", JWTAuth(jwt), RequirePermission(rbacService, "settings.write", WithAdminRoleOverride()), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/settings", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", w.Code, w.Body.String())
+	}
+}

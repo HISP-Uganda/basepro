@@ -90,6 +90,35 @@ func TestLoginBrandingUpdateRouteAcceptsAuthorizedWriter(t *testing.T) {
 	}
 }
 
+func TestLoginBrandingUpdateRouteAcceptsAdminWithoutExplicitSettingsWrite(t *testing.T) {
+	jwt := auth.NewJWTManager("jwt-secret", time.Minute)
+	token, _, _ := jwt.GenerateAccessToken(100, "admin", time.Now().UTC())
+	rbacService := rbac.NewService(&fakeRBACRepo{
+		rolesByUser: map[int64][]rbac.Role{
+			100: {{ID: 1, Name: "Admin"}},
+		},
+		permsByUser: map[int64][]rbac.Permission{
+			100: {{ID: 1, Name: "settings.read"}},
+		},
+	})
+	handler := settings.NewHandler(settings.NewService(&fakeSettingsRepo{}, nil))
+	router := newRouter(AppDeps{
+		JWTManager:      jwt,
+		RBACService:     rbacService,
+		SettingsHandler: handler,
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/login-branding", strings.NewReader(`{"applicationDisplayName":"BasePro Admin"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+}
+
 func rbacServiceWithPermissions(perms map[int64][]string) *rbac.Service {
 	roleMap := map[int64][]rbac.Role{}
 	permMap := map[int64][]rbac.Permission{}
