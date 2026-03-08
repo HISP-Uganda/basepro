@@ -162,6 +162,10 @@ func newRouter(deps AppDeps) *gin.Engine {
 		)
 		settingsGroup.GET("/login-branding", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsRead), deps.SettingsHandler.GetLoginBranding)
 		settingsGroup.PUT("/login-branding", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsWrite), deps.SettingsHandler.UpdateLoginBranding)
+		if deps.ModuleFlagsHandler != nil {
+			settingsGroup.GET("/module-enablement", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsRead), deps.ModuleFlagsHandler.GetEffective)
+			settingsGroup.PUT("/module-enablement", middleware.RequirePermission(deps.RBACService, rbac.PermissionSettingsWrite), deps.ModuleFlagsHandler.UpdateRuntimeOverrides)
+		}
 	}
 
 	return r

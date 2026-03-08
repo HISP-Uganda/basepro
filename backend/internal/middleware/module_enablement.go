@@ -12,7 +12,7 @@ func RequireModuleEnabled(getOverrides func() map[string]bool, moduleID string) 
 	}
 
 	return func(c *gin.Context) {
-		if moduleenablement.IsModuleEnabled(moduleID, getOverrides()) {
+		if moduleenablement.IsModuleEnabled(moduleID, getOverrides(), nil) {
 			c.Next()
 			return
 		}

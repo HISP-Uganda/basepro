@@ -3,19 +3,24 @@ package moduleenablement
 import "testing"
 
 func TestResolveEffectiveUsesDefaultsAndConfigOverrides(t *testing.T) {
-	items := ResolveEffective(map[string]bool{
-		"modules.settings.enabled": false,
-	})
+	items := ResolveEffective(
+		map[string]bool{"modules.settings.enabled": false},
+		map[string]bool{"modules.administration.enabled": false},
+	)
 
 	if len(items) != 3 {
 		t.Fatalf("expected 3 module definitions, got %d", len(items))
 	}
 
-	if items[0].ModuleID != "dashboard" || !items[0].Enabled || items[0].Source != "default" {
+	if items[0].ModuleID != "dashboard" || !items[0].Enabled || items[0].Source != "default" || items[0].Editable {
 		t.Fatalf("unexpected dashboard effective config: %+v", items[0])
 	}
 
-	if items[2].ModuleID != "settings" || items[2].Enabled || items[2].Source != "config" {
+	if items[1].ModuleID != "administration" || items[1].Enabled || items[1].Source != "runtime" || !items[1].Editable {
+		t.Fatalf("expected administration module to be disabled by runtime override: %+v", items[1])
+	}
+
+	if items[2].ModuleID != "settings" || items[2].Enabled || items[2].Source != "config" || items[2].Editable {
 		t.Fatalf("expected settings module to be disabled by config override: %+v", items[2])
 	}
 }

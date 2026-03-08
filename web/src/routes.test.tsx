@@ -553,6 +553,9 @@ describe('web settings page', () => {
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           )
         }
+        if (url.endsWith('/settings/module-enablement') && (!init?.method || init.method === 'GET')) {
+          return new Response(JSON.stringify({ modules: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
         if (url.endsWith('/health')) {
           return new Response(JSON.stringify({ status: 'ok' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
         }
@@ -573,6 +576,65 @@ describe('web settings page', () => {
         loginImageUrl: 'https://cdn.example.com/new.png',
       })
     })
+  })
+
+  it('shows module enablement list and write-permission guidance', async () => {
+    setAuthSnapshot({
+      isAuthenticated: true,
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      user: {
+        id: 99,
+        username: 'settings-user',
+        roles: ['Admin'],
+        permissions: ['settings.read'],
+      },
+    })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.endsWith('/settings/module-enablement') && (!init?.method || init.method === 'GET')) {
+          return new Response(
+            JSON.stringify({
+              modules: [
+                {
+                  moduleId: 'administration',
+                  flagKey: 'modules.administration.enabled',
+                  enabled: true,
+                  enabledByDefault: true,
+                  description: 'Administration surfaces',
+                  source: 'default',
+                  adminControl: 'runtime',
+                  editable: true,
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/settings/login-branding') && (!init?.method || init.method === 'GET')) {
+          return new Response(
+            JSON.stringify({
+              applicationDisplayName: 'BasePro Web',
+              loginImageUrl: '',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/health')) {
+          return new Response(JSON.stringify({ status: 'ok' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }),
+    )
+
+    renderWithRouter('/settings')
+    expect(await screen.findByText('Administration surfaces')).toBeInTheDocument()
+    expect(
+      screen.getByText('You need settings.write permission to change runtime-manageable module flags.'),
+    ).toBeInTheDocument()
   })
 })
 

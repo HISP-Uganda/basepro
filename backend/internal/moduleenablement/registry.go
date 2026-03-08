@@ -18,6 +18,7 @@ type Definition struct {
 	Description      string
 	Scope            Scope
 	Experimental     bool
+	AdminControl     AdminControl
 }
 
 type EffectiveModule struct {
@@ -29,7 +30,17 @@ type EffectiveModule struct {
 	Scope            Scope  `json:"scope,omitempty"`
 	Experimental     bool   `json:"experimental,omitempty"`
 	Source           string `json:"source"`
+	AdminControl     string `json:"adminControl"`
+	Editable         bool   `json:"editable"`
 }
+
+type AdminControl string
+
+const (
+	AdminControlStatic   AdminControl = "static"
+	AdminControlRuntime  AdminControl = "runtime"
+	AdminControlReadOnly AdminControl = "read-only"
+)
 
 var registry = []Definition{
 	{
@@ -38,6 +49,7 @@ var registry = []Definition{
 		EnabledByDefault: true,
 		Description:      "Authenticated dashboard shell entry.",
 		Scope:            ScopeFullStack,
+		AdminControl:     AdminControlStatic,
 	},
 	{
 		ModuleID:         "administration",
@@ -45,6 +57,7 @@ var registry = []Definition{
 		EnabledByDefault: true,
 		Description:      "RBAC and audit administration surfaces.",
 		Scope:            ScopeFullStack,
+		AdminControl:     AdminControlRuntime,
 	},
 	{
 		ModuleID:         "settings",
@@ -52,6 +65,7 @@ var registry = []Definition{
 		EnabledByDefault: true,
 		Description:      "System configuration and branding surfaces.",
 		Scope:            ScopeFullStack,
+		AdminControl:     AdminControlStatic,
 	},
 }
 
@@ -61,15 +75,21 @@ func Definitions() []Definition {
 	return out
 }
 
-func ResolveEffective(overrides map[string]bool) []EffectiveModule {
+func ResolveEffective(configOverrides map[string]bool, runtimeOverrides map[string]bool) []EffectiveModule {
 	items := make([]EffectiveModule, 0, len(registry))
 	for _, definition := range registry {
 		enabled := definition.EnabledByDefault
 		source := "default"
-		if overrides != nil {
-			if value, ok := overrides[definition.FlagKey]; ok {
+		if configOverrides != nil {
+			if value, ok := configOverrides[definition.FlagKey]; ok {
 				enabled = value
 				source = "config"
+			}
+		}
+		if runtimeOverrides != nil && isRuntimeEditable(definition) {
+			if value, ok := runtimeOverrides[definition.FlagKey]; ok {
+				enabled = value
+				source = "runtime"
 			}
 		}
 		items = append(items, EffectiveModule{
@@ -81,24 +101,51 @@ func ResolveEffective(overrides map[string]bool) []EffectiveModule {
 			Scope:            definition.Scope,
 			Experimental:     definition.Experimental,
 			Source:           source,
+			AdminControl:     string(resolveAdminControl(definition)),
+			Editable:         isRuntimeEditable(definition),
 		})
 	}
 	return items
 }
 
-func IsModuleEnabled(moduleID string, overrides map[string]bool) bool {
+func IsModuleEnabled(moduleID string, configOverrides map[string]bool, runtimeOverrides map[string]bool) bool {
 	for _, definition := range registry {
 		if definition.ModuleID != moduleID {
 			continue
 		}
-		if overrides != nil {
-			if value, ok := overrides[definition.FlagKey]; ok {
+		if runtimeOverrides != nil && isRuntimeEditable(definition) {
+			if value, ok := runtimeOverrides[definition.FlagKey]; ok {
+				return value
+			}
+		}
+		if configOverrides != nil {
+			if value, ok := configOverrides[definition.FlagKey]; ok {
 				return value
 			}
 		}
 		return definition.EnabledByDefault
 	}
 	return true
+}
+
+func EditableDefinitionByModuleID(moduleID string) (Definition, bool) {
+	for _, definition := range registry {
+		if definition.ModuleID == moduleID && isRuntimeEditable(definition) {
+			return definition, true
+		}
+	}
+	return Definition{}, false
+}
+
+func resolveAdminControl(definition Definition) AdminControl {
+	if definition.Experimental && definition.AdminControl == AdminControlRuntime {
+		return AdminControlReadOnly
+	}
+	return definition.AdminControl
+}
+
+func isRuntimeEditable(definition Definition) bool {
+	return resolveAdminControl(definition) == AdminControlRuntime
 }
 
 func ValidateOverrides(overrides map[string]bool) error {

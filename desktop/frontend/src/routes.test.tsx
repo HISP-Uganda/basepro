@@ -1240,6 +1240,14 @@ describe('app shell routes', () => {
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           )
         }
+        if (url.endsWith('/api/v1/settings/module-enablement') && (!init?.method || init.method === 'GET')) {
+          return new Response(
+            JSON.stringify({
+              modules: [],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
         return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
       }),
     )
@@ -1257,5 +1265,79 @@ describe('app shell routes', () => {
         loginImageUrl: 'https://cdn.example.com/new.png',
       })
     })
+  })
+
+  it('shows module enablement list and write-permission guidance on settings page', async () => {
+    const store = createMockSettingsStore({
+      ...defaultSettings,
+      apiBaseUrl: 'http://127.0.0.1:8080',
+      refreshToken: 'refresh-token',
+    })
+
+    configureSessionStorage(store)
+    await setSession({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      expiresAt: Date.now() + 60_000,
+    })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        if (url.includes('/api/v1/auth/me')) {
+          return new Response(
+            JSON.stringify({
+              id: 1,
+              username: 'admin',
+              roles: ['Admin'],
+              permissions: ['settings.read'],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/v1/version')) {
+          return new Response(
+            JSON.stringify({ version: '1.0.0', commit: 'abc123', buildDate: '2026-03-06T00:00:00Z' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/v1/settings/module-enablement') && (!init?.method || init.method === 'GET')) {
+          return new Response(
+            JSON.stringify({
+              modules: [
+                {
+                  moduleId: 'administration',
+                  flagKey: 'modules.administration.enabled',
+                  enabled: true,
+                  enabledByDefault: true,
+                  description: 'Admin module',
+                  source: 'default',
+                  adminControl: 'runtime',
+                  editable: true,
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/v1/settings/login-branding') && (!init?.method || init.method === 'GET')) {
+          return new Response(
+            JSON.stringify({
+              applicationDisplayName: 'BasePro',
+              loginImageUrl: '',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          )
+        }
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }),
+    )
+
+    renderWithRouter('/settings', store)
+    expect(await screen.findByText('Admin module')).toBeInTheDocument()
+    expect(
+      screen.getByText('You need settings.write permission to change runtime-manageable module flags.'),
+    ).toBeInTheDocument()
   })
 })

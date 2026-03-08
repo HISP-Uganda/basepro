@@ -49,6 +49,13 @@ export interface LoginBrandingUpdateRequest {
   loginImageUrl?: string | null
 }
 
+export interface ModuleEnablementUpdateRequest {
+  modules: Array<{
+    moduleId: string
+    enabled: boolean
+  }>
+}
+
 interface ApiErrorPayload {
   error?: {
     code?: string
@@ -368,6 +375,19 @@ export function createApiClient(deps: ApiClientDeps) {
 
     async updateLoginBranding(payload: LoginBrandingUpdateRequest) {
       return authorizedRequest<LoginBrandingResponse>('/api/v1/settings/login-branding', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      })
+    },
+
+    async getModuleEnablementSettings() {
+      return authorizedRequest<ModuleEnablementApiResponse>('/api/v1/settings/module-enablement', {
+        method: 'GET',
+      })
+    },
+
+    async updateModuleEnablementSettings(payload: ModuleEnablementUpdateRequest) {
+      return authorizedRequest<ModuleEnablementApiResponse>('/api/v1/settings/module-enablement', {
         method: 'PUT',
         body: JSON.stringify(payload),
       })

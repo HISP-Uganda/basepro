@@ -21,7 +21,9 @@ export interface ModuleEffectiveConfig {
   description?: string
   scope?: ModuleEnablementScope
   experimental?: boolean
-  source: 'default' | 'config'
+  source: 'default' | 'config' | 'runtime'
+  adminControl?: 'static' | 'runtime' | 'read-only'
+  editable?: boolean
 }
 
 export interface ModuleEnablementApiResponse {

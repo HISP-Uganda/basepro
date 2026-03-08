@@ -22,6 +22,7 @@ import { apiRequest } from '../lib/api'
 import { appName } from '../lib/env'
 import { getApiBaseUrlOverride, setApiBaseUrlOverride } from '../lib/apiBaseUrl'
 import { useAppNotify } from '../notifications/facade'
+import type { ModuleEffectiveConfig } from '../registry/moduleEnablement'
 import { type UiThemeMode } from '../ui/preferences'
 import { PaletteRoundedIcon } from '../ui/icons'
 import { PalettePresetPicker } from '../ui/theme/PalettePresetPicker'
@@ -55,10 +56,20 @@ export function SettingsPage() {
   const [brandingSaving, setBrandingSaving] = React.useState(false)
   const [brandingPreviewBroken, setBrandingPreviewBroken] = React.useState(false)
   const [brandingErrorMessage, setBrandingErrorMessage] = React.useState('')
+  const [moduleEnablement, setModuleEnablement] = React.useState<ModuleEffectiveConfig[]>([])
+  const [moduleEnablementLoading, setModuleEnablementLoading] = React.useState(true)
+  const [moduleEnablementSaving, setModuleEnablementSaving] = React.useState(false)
+  const [moduleEnablementError, setModuleEnablementError] = React.useState('')
 
   const canWriteBranding = React.useMemo(
     () => (auth.user?.permissions ?? []).some((permission) => permission.trim().toLowerCase() === 'settings.write'),
     [auth.user?.permissions],
+  )
+  const canReadModuleEnablement = React.useMemo(
+    () =>
+      canWriteBranding ||
+      (auth.user?.permissions ?? []).some((permission) => permission.trim().toLowerCase() === 'settings.read'),
+    [auth.user?.permissions, canWriteBranding],
   )
 
   React.useEffect(() => {
@@ -97,6 +108,39 @@ export function SettingsPage() {
       active = false
     }
   }, [notify])
+
+  React.useEffect(() => {
+    if (!canReadModuleEnablement) {
+      setModuleEnablement([])
+      setModuleEnablementLoading(false)
+      return
+    }
+    let active = true
+    setModuleEnablementLoading(true)
+    apiRequest<{ modules: ModuleEffectiveConfig[] }>('/settings/module-enablement', { method: 'GET' })
+      .then((payload) => {
+        if (!active) {
+          return
+        }
+        setModuleEnablement(payload.modules ?? [])
+      })
+      .catch((error) => {
+        if (active) {
+          void handleAppError(error, {
+            fallbackMessage: 'Unable to load module enablement settings.',
+            notifier: notify,
+          })
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setModuleEnablementLoading(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [canReadModuleEnablement, notify])
 
   const brandingUrlValidationError = React.useMemo(() => {
     if (!brandingImageUrl.trim()) {
@@ -175,6 +219,33 @@ export function SettingsPage() {
     }
   }
 
+  const handleToggleModuleEnablement = async (moduleId: string, enabled: boolean) => {
+    if (!canWriteBranding) {
+      return
+    }
+    setModuleEnablementSaving(true)
+    setModuleEnablementError('')
+    try {
+      const payload = await apiRequest<{ modules: ModuleEffectiveConfig[] }>('/settings/module-enablement', {
+        method: 'PUT',
+        body: JSON.stringify({
+          modules: [{ moduleId, enabled }],
+        }),
+      })
+      setModuleEnablement(payload.modules ?? [])
+      notify.success('Module enablement updated.')
+    } catch (error) {
+      const { error: normalized } = await handleAppError(error, {
+        fallbackMessage: 'Unable to update module enablement.',
+        notifyUser: false,
+      })
+      const requestId = normalized.requestId ? ` Request ID: ${normalized.requestId}` : ''
+      setModuleEnablementError(`${normalized.message}${requestId}`)
+    } finally {
+      setModuleEnablementSaving(false)
+    }
+  }
+
   return (
     <Stack spacing={3}>
       <Paper elevation={1} sx={{ p: 3 }}>
@@ -248,6 +319,74 @@ export function SettingsPage() {
               <Chip label="Theme Chip" color="primary" />
             </Stack>
           </Paper>
+        </Stack>
+      </Paper>
+
+      <Paper elevation={1} sx={{ p: 3 }}>
+        <Stack spacing={2}>
+          <Typography variant="h6" component="h2">
+            Module Enablement
+          </Typography>
+          <Divider />
+          <Typography color="text.secondary">
+            Review effective module flags. Only runtime-manageable flags can be changed here.
+          </Typography>
+          {!canReadModuleEnablement ? <Alert severity="info">You need settings.read permission to view module flags.</Alert> : null}
+          {moduleEnablementError ? <Alert severity="error">{moduleEnablementError}</Alert> : null}
+          {canReadModuleEnablement ? (
+            moduleEnablementLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                <Typography color="text.secondary">Loading module flags...</Typography>
+              </Box>
+            ) : (
+              <Stack spacing={1.5}>
+                {moduleEnablement.map((module) => {
+                  const isEditable = module.editable === true && canWriteBranding
+                  return (
+                    <Box
+                      key={module.moduleId}
+                      data-testid={`module-flag-${module.moduleId}`}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        p: 1.5,
+                      }}
+                    >
+                      <Stack spacing={1}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" useFlexGap flexWrap="wrap">
+                          <Typography variant="subtitle1" sx={{ textTransform: 'capitalize' }}>
+                            {module.moduleId}
+                          </Typography>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={module.enabled}
+                                disabled={!isEditable || moduleEnablementSaving}
+                                inputProps={{ 'aria-label': `Toggle ${module.moduleId} module` }}
+                                onChange={(event) => void handleToggleModuleEnablement(module.moduleId, event.target.checked)}
+                              />
+                            }
+                            label={module.enabled ? 'Enabled' : 'Disabled'}
+                          />
+                        </Stack>
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                          <Chip size="small" label={module.enabled ? 'Enabled' : 'Disabled'} color={module.enabled ? 'success' : 'default'} />
+                          <Chip size="small" label={module.adminControl ?? (module.editable ? 'runtime' : 'static')} />
+                          <Chip size="small" label={`Source: ${module.source}`} variant="outlined" />
+                          {module.experimental ? <Chip size="small" label="Experimental" color="warning" /> : null}
+                        </Stack>
+                        <Typography color="text.secondary">{module.description ?? 'No description provided.'}</Typography>
+                      </Stack>
+                    </Box>
+                  )
+                })}
+              </Stack>
+            )
+          ) : null}
+          {canReadModuleEnablement && !canWriteBranding ? (
+            <Alert severity="info">You need settings.write permission to change runtime-manageable module flags.</Alert>
+          ) : null}
         </Stack>
       </Paper>
 

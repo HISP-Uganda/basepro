@@ -1,5 +1,59 @@
 # Status
 
+## Milestone — Module Enablement Admin UX (Complete)
+
+### What changed
+- Added a deliberate backend management model for module flags:
+  - `static` flags are visible but read-only in admin UX.
+  - `runtime` flags are explicitly allowlisted for admin edits.
+  - `read-only` control state is supported for experimental/runtime-readonly scenarios.
+- Current skeleton manageability defaults:
+  - `dashboard`: static (read-only)
+  - `administration`: runtime-manageable
+  - `settings`: static (read-only)
+- Extended backend module-enablement contract and runtime persistence:
+  - runtime overrides stored in `app_settings` under `module_enablement/runtime_overrides`
+  - effective resolution precedence: default -> config -> runtime (for runtime-manageable flags only)
+  - enriched effective payload metadata: `adminControl`, `editable`, and `source` (`default|config|runtime`)
+- Added backend API support for module enablement administration:
+  - public effective listing remains: `GET /api/v1/modules/effective`
+  - admin settings endpoints:
+    - `GET /api/v1/settings/module-enablement` (`settings.read`)
+    - `PUT /api/v1/settings/module-enablement` (`settings.write`)
+  - server-side validation rejects non-editable module updates
+  - audit logging on updates: `settings.module_enablement.update`
+- Added desktop and web Settings UX parity:
+  - new `Module Enablement` section in Settings pages
+  - clear state indicators for enabled/disabled, source, static/runtime/read-only control, and experimental flags
+  - runtime updates available only for editable rows and authorized writers
+  - reader-only users see explicit non-editable guidance
+- Saved prompt traceability copy:
+  - `docs/prompts/2026-03-08-module-enablement-admin-ux.md` (gitignored; not for commit)
+
+### Added/updated targeted tests
+- Backend:
+  - `backend/internal/moduleenablement/service_test.go` (runtime update validation + audit event)
+  - `backend/internal/moduleenablement/registry_test.go` (runtime source + editable metadata behavior)
+  - `backend/cmd/api/router_module_enablement_test.go` (settings endpoint authz + runtime update flow)
+- Desktop:
+  - updated `desktop/frontend/src/routes.test.tsx` settings tests for module enablement visibility and write-permission guidance
+- Web:
+  - updated `web/src/routes.test.tsx` settings tests for module enablement visibility and write-permission guidance
+
+### Tests and verification
+- Backend:
+  - `cd backend && GOCACHE=/tmp/go-build go test ./...` -> PASS
+- Desktop frontend:
+  - `cd desktop/frontend && npm test -- --run` -> PASS
+- Web frontend:
+  - `cd web && npm test -- --run` -> PASS
+- Web build:
+  - `cd web && npm run build` -> PASS
+
+### Remaining follow-ups
+- Existing non-blocking MUI jsdom `anchorEl` warnings remain in desktop/web frontend test logs.
+- Existing non-blocking Vite third-party `'use client'` and chunk-size warnings remain in web build output.
+
 ## Milestone — Module Enablement Enforcement Hardening (Complete)
 
 ### What changed

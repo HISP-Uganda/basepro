@@ -101,6 +101,10 @@ func run() error {
 		cfg.Auth.PasswordHashCost,
 	)
 	usersService := users.NewService(users.NewSQLRepository(database), rbacService, auditService, cfg.Auth.PasswordHashCost)
+	moduleEnablementService := moduleenablement.NewService(settings.NewSQLRepository(database), auditService)
+	if err := moduleEnablementService.LoadRuntimeOverrides(ctx); err != nil {
+		return fmt.Errorf("load module runtime overrides: %w", err)
+	}
 	rbacAdminService := rbac.NewAdminService(
 		rbac.NewSQLRepository(database),
 		auditService,
@@ -109,7 +113,7 @@ func run() error {
 			if !hasModule {
 				return true
 			}
-			return moduleenablement.IsModuleEnabled(moduleID, config.Get().Modules.Flags)
+			return moduleenablement.IsModuleEnabled(moduleID, moduleEnablementService.EffectiveOverrideMap(config.Get().Modules.Flags), nil)
 		}),
 	)
 	settingsService := settings.NewService(settings.NewSQLRepository(database), auditService)
@@ -167,11 +171,11 @@ func run() error {
 			AuditHandler:     audit.NewHandler(auditService),
 			UsersHandler:     users.NewHandler(usersService),
 			SettingsHandler:  settings.NewHandler(settingsService),
-			ModuleFlagsHandler: moduleenablement.NewHandler(func() map[string]bool {
+			ModuleFlagsHandler: moduleenablement.NewHandler(moduleEnablementService, func() map[string]bool {
 				return config.Get().Modules.Flags
 			}),
 			ModuleFlagsProvider: func() map[string]bool {
-				return config.Get().Modules.Flags
+				return moduleEnablementService.EffectiveOverrideMap(config.Get().Modules.Flags)
 			},
 			APITokenHeaderName:  cfg.Auth.APITokenHeaderName,
 			APITokenAllowBearer: cfg.Auth.APITokenAllowBearer,
